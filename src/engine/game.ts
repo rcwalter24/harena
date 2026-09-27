@@ -69,8 +69,13 @@ export function createGame(opts: GameOptions): GameState {
       weapon: 'knife',
       hasGun: false,
       ammo: 0,
+      hasLauncher: false,
+      grenades: 0,
+      mines: 0,
       knifeCooldown: 0,
       gunCooldown: 0,
+      launcherCooldown: 0,
+      mineCooldown: 0,
       switchTimer: 0,
       invulnerableTimer: 0,
       respawnTimer: 0,
@@ -94,6 +99,8 @@ function tickTimers(state: GameState): void {
     if (p.alive) {
       p.knifeCooldown = dec(p.knifeCooldown);
       p.gunCooldown = dec(p.gunCooldown);
+      p.launcherCooldown = dec(p.launcherCooldown);
+      p.mineCooldown = dec(p.mineCooldown);
       p.switchTimer = dec(p.switchTimer);
       p.invulnerableTimer = dec(p.invulnerableTimer);
     } else if (!p.eliminated) {

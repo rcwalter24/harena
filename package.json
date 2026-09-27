@@ -10,9 +10,14 @@
     "preview": "vite preview",
     "typecheck": "tsc -p tsconfig.json && tsc -p tsconfig.engine.json",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "review": "node scripts/review.ts",
+    "docs": "node scripts/gen-bot-api.ts",
+    "docs:check": "node scripts/gen-bot-api.ts --check"
   },
   "devDependencies": {
+    "@types/node": "^26.6.3",
+    "@typesafe-ai/sdk": "^0.6.0",
     "typescript": "^7.0.2",
     "vite": "^8.3.1",
     "vitest": "^5.0.2"

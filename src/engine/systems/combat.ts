@@ -59,7 +59,7 @@ export function applyAttacks(state: GameState, actions: readonly ActionInput[]):
       }
       if (hitIds.length > 0) p.stats.knifeHits++;
       state.events.push({ type: 'swing', tick: state.tick, playerId: p.id, hitIds });
-    } else {
+    } else if (p.weapon === 'gun') {
       if (p.gunCooldown > 0 || p.ammo <= 0 || !p.hasGun) continue;
       p.gunCooldown = secondsToTicks(config.gun.cooldown, config);
       p.invulnerableTimer = 0;

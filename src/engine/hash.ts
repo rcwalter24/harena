@@ -24,8 +24,9 @@ export function hashState(state: GameState): string {
     mix(p.x); mix(p.y); mix(p.vx); mix(p.vy); mix(p.facing);
     mix(p.hp); mix(p.shield); mix(p.lives);
     mix(p.alive ? 1 : 0); mix(p.eliminated ? 1 : 0);
-    mix(p.weapon === 'gun' ? 1 : 0); mix(p.hasGun ? 1 : 0); mix(p.ammo);
-    mix(p.knifeCooldown); mix(p.gunCooldown); mix(p.switchTimer);
+    mix(p.weapon === 'gun' ? 1 : p.weapon === 'launcher' ? 2 : 0); mix(p.hasGun ? 1 : 0); mix(p.ammo);
+    mix(p.hasLauncher ? 1 : 0); mix(p.grenades); mix(p.mines);
+    mix(p.knifeCooldown); mix(p.gunCooldown); mix(p.launcherCooldown); mix(p.mineCooldown); mix(p.switchTimer);
     mix(p.invulnerableTimer); mix(p.respawnTimer);
   }
   for (const b of state.bullets) {

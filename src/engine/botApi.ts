@@ -1,0 +1,198 @@
+// Harena bot API — the exact shapes a bot receives and returns.
+//
+// Conventions used everywhere below:
+//   * Distances are world units (u). Origin (0, 0) is the TOP-LEFT corner of the map;
+//     +x points right, +y points DOWN.
+//   * Angles are radians, 0 = pointing right (+x), increasing CLOCKWISE on screen
+//     (PI/2 = pointing down). This is exactly Math.atan2(dy, dx) for a vector (dx, dy).
+//     Angles in the state are normalized to (-PI, PI]; you may return any finite angle.
+//   * Speeds are u/s, times and timers are seconds.
+//   * `players` is indexed by player id: state.players[id].id === id.
+
+export type WeaponName = 'knife' | 'gun' | 'launcher';
+
+export type ItemType = 'ammo' | 'shield' | 'health' | 'gun' | 'life' | 'launcher' | 'mines';
+
+export interface Vec2 {
+  x: number;
+  y: number;
+}
+
+/** Axis-aligned wall rectangle: top-left corner (x, y), width w, height h. */
+export interface Wall {
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+}
+
+/** Passed once to init(). */
+export interface InitInfo {
+  /** Your player id. */
+  selfId: number;
+  /** Everyone in the match, in id order (including you). */
+  players: { id: number; name: string }[];
+  map: {
+    id: string;
+    name: string;
+    width: number;
+    height: number;
+    /** Solid for players, bullets, grenades and explosions. The map edge is solid too. */
+    walls: Wall[];
+    /** Possible (re)spawn points. */
+    spawns: Vec2[];
+    /** Gun pads: a gun appears here at the start and refills some time after being taken. */
+    gunSpawns: Vec2[];
+    /** Bushes: enemies inside can be hidden from you (see the rules). They block nothing. */
+    bushes: Wall[];
+  };
+  /** Every rule constant (same values as the tables in this document), e.g. rules.knife.damage. */
+  rules: Record<string, any>;
+  /** Match length in seconds, or 0 for no limit. */
+  timeLimit: number;
+}
+
+export interface PlayerView {
+  id: number;
+  name: string;
+  /**
+   * false if this enemy is hidden from you in a bush. x, y, vx, vy and facing then
+   * show what you saw last time it was visible (they are not updated while hidden).
+   * You and your own data are always visible.
+   */
+  visible: boolean;
+  /** Seconds since you last saw this player (0 while visible). */
+  seenAgo: number;
+  x: number;
+  y: number;
+  /** Actual velocity during the last tick, u/s. */
+  vx: number;
+  vy: number;
+  /** Current facing in radians. Attacks go this way. It turns toward your `aim` at a capped rate. */
+  facing: number;
+  hp: number;
+  shield: number;
+  /** Lives left, including the current one. */
+  lives: number;
+  /** false while waiting to respawn or after elimination. */
+  alive: boolean;
+  /** true once all lives are gone (out of the match for good). */
+  eliminated: boolean;
+  /** Seconds until respawn while dead (0 when alive or eliminated). */
+  respawnIn: number;
+  /** Seconds of invulnerability left (0 = can be damaged). */
+  invulnerable: number;
+  /** Weapon in hand. */
+  weapon: WeaponName;
+  /** Weapons owned besides the knife (the knife is always owned). */
+  hasGun: boolean;
+  hasLauncher: boolean;
+  /** Ammunition: gun bullets and launcher grenades. */
+  ammo: { gun: number; launcher: number };
+  /** Mines carried. */
+  mines: number;
+  /** Seconds until each action is available again (0 = ready now). */
+  cooldowns: {
+    knife: number;
+    gun: number;
+    launcher: number;
+    mine: number;
+    /** Weapon switching: no attacks until this reaches 0. */
+    switch: number;
+  };
+}
+
+export interface BulletView {
+  id: number;
+  ownerId: number;
+  x: number;
+  y: number;
+  /** Constant velocity, u/s. */
+  vx: number;
+  vy: number;
+  radius: number;
+}
+
+export interface GrenadeView {
+  id: number;
+  ownerId: number;
+  x: number;
+  y: number;
+  vx: number;
+  vy: number;
+  radius: number;
+  /** Distance left before it explodes on its own. */
+  remainingRange: number;
+}
+
+export interface MineView {
+  id: number;
+  ownerId: number;
+  x: number;
+  y: number;
+  /** Seconds until it explodes. */
+  fuse: number;
+}
+
+/** An explosion that happened during the last tick. */
+export interface ExplosionView {
+  ownerId: number;
+  source: 'grenade' | 'mine';
+  x: number;
+  y: number;
+  radius: number;
+}
+
+export interface ItemView {
+  id: number;
+  type: ItemType;
+  x: number;
+  y: number;
+}
+
+/** Things that happened during the last tick. */
+export type EventView =
+  | { type: 'shot'; playerId: number }
+  | { type: 'swing'; playerId: number; hitIds: number[] }
+  | { type: 'hit'; attackerId: number; targetId: number; weapon: WeaponName | 'explosion'; damage: number }
+  | { type: 'death'; playerId: number; killerId: number; livesLeft: number }
+  | { type: 'eliminated'; playerId: number }
+  | { type: 'respawn'; playerId: number; x: number; y: number }
+  | { type: 'pickup'; playerId: number; itemType: ItemType };
+
+/** Passed to decide() every tick. A fresh copy each time: changing it has no effect. */
+export interface BotState {
+  /** Index of the tick being decided (0, 1, 2, ...). */
+  tick: number;
+  /** Seconds elapsed since the start. */
+  time: number;
+  /** Seconds left before the time limit, or null if there is no limit. */
+  timeLeft: number | null;
+  /** You (same object as players[selfId]). */
+  self: PlayerView;
+  /** Everyone, indexed by id, including you and dead / eliminated players. */
+  players: PlayerView[];
+  bullets: BulletView[];
+  grenades: GrenadeView[];
+  mines: MineView[];
+  explosions: ExplosionView[];
+  items: ItemView[];
+  events: EventView[];
+}
+
+/**
+ * Returned from decide(). Every field is optional; returning {} or null means
+ * "stand still, keep facing, don't attack".
+ */
+export interface Action {
+  /** Movement direction. Length is clamped to 1: {x:1,y:0} = full speed right, {x:0.5,y:0} = half speed. */
+  move?: Vec2;
+  /** Angle to turn toward, radians. Facing rotates toward it at most rules.player.turnRateDegrees per second. */
+  aim?: number;
+  /** Attack with the weapon in hand (ignored while on cooldown, switching, or out of ammo). */
+  attack?: boolean;
+  /** Switch to this weapon (ignored if you don't own it or already hold it). */
+  weapon?: WeaponName;
+  /** Plant a mine at your position (needs a carried mine and a ready mine cooldown). */
+  plantMine?: boolean;
+}

@@ -19,7 +19,12 @@ export function validateMap(raw: unknown, playerRadius = 16): MapData {
   if (!Array.isArray(m.walls)) fail('walls must be an array');
   if (!Array.isArray(m.spawns) || m.spawns!.length === 0) fail('needs at least one spawn');
   if (!Array.isArray(m.gunSpawns)) fail('gunSpawns must be an array');
+  if (m.bushes !== undefined && !Array.isArray(m.bushes)) fail('bushes must be an array');
   const map = m as MapData;
+  map.bushes ??= [];
+  map.bushes.forEach((b, i) => {
+    if (![b.x, b.y, b.w, b.h].every(isNum) || b.w <= 0 || b.h <= 0) fail(`bush ${i} is malformed`);
+  });
   map.walls.forEach((w, i) => {
     if (![w.x, w.y, w.w, w.h].every(isNum) || w.w <= 0 || w.h <= 0) fail(`wall ${i} is malformed`);
   });

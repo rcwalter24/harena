@@ -64,6 +64,8 @@ export function placeAtSpawn(state: GameState, p: PlayerState, spawn: SpawnPoint
   p.weapon = 'knife';
   p.knifeCooldown = 0;
   p.gunCooldown = 0;
+  p.launcherCooldown = 0;
+  p.mineCooldown = 0;
   p.switchTimer = 0;
   p.respawnTimer = 0;
   p.lastDamagerId = -1;

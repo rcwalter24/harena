@@ -1,4 +1,19 @@
 import './styles.css';
-import { mountSandbox } from './sandbox.ts';
+import type { MatchSetup } from './matchSetup.ts';
+import { mountMatch } from './matchView.ts';
+import { mountSetup } from './setup.ts';
 
-mountSandbox(document.getElementById('app')!);
+const app = document.getElementById('app')!;
+let dispose: (() => void) | null = null;
+
+function showSetup(): void {
+  dispose?.();
+  dispose = mountSetup(app, showMatch);
+}
+
+function showMatch(setup: MatchSetup): void {
+  dispose?.();
+  dispose = mountMatch(app, setup, showSetup);
+}
+
+showSetup();

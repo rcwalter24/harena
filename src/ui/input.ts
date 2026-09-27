@@ -86,7 +86,7 @@ export class HumanController implements Controller {
     if (this.toggleWeapon) weapon = self.weapon === 'gun' ? 'knife' : 'gun';
     this.pendingWeapon = null;
     this.toggleWeapon = false;
-    return { moveX: mx, moveY: my, aim, attack: this.mouseDown || k.has('Space'), weapon };
+    return { moveX: mx, moveY: my, aim, attack: this.mouseDown || k.has('Space'), weapon, plantMine: false };
   }
 
   dispose(): void {

@@ -10,6 +10,7 @@ export function applyWeaponSwitches(state: GameState, actions: readonly ActionIn
     const want = actions[p.id].weapon;
     if (!want || want === p.weapon) continue;
     if (want === 'gun' && !p.hasGun) continue;
+    if (want === 'launcher' && !p.hasLauncher) continue;
     p.weapon = want;
     p.switchTimer = switchTicks;
     state.events.push({ type: 'switch', tick: state.tick, playerId: p.id, weapon: want });

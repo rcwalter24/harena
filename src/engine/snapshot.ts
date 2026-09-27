@@ -1,0 +1,101 @@
+import type { BotState, EventView, InitInfo, PlayerView } from './botApi.ts';
+import type { GameState, PlayerState } from './types.ts';
+
+/** Build the plain-data view of one player that bots see. */
+export function playerView(state: GameState, p: PlayerState): PlayerView {
+  const t = (ticks: number) => ticks / state.config.tickRate;
+  return {
+    id: p.id,
+    name: p.name,
+    visible: true,
+    seenAgo: 0,
+    x: p.x,
+    y: p.y,
+    vx: p.vx,
+    vy: p.vy,
+    facing: p.facing,
+    hp: p.hp,
+    shield: p.shield,
+    lives: p.lives,
+    alive: p.alive,
+    eliminated: p.eliminated,
+    respawnIn: p.alive || p.eliminated ? 0 : t(p.respawnTimer),
+    invulnerable: p.alive ? t(p.invulnerableTimer) : 0,
+    weapon: p.weapon,
+    hasGun: p.hasGun,
+    hasLauncher: p.hasLauncher,
+    ammo: { gun: p.ammo, launcher: p.grenades },
+    mines: p.mines,
+    cooldowns: {
+      knife: t(p.knifeCooldown),
+      gun: t(p.gunCooldown),
+      launcher: t(p.launcherCooldown),
+      mine: t(p.mineCooldown),
+      switch: t(p.switchTimer),
+    },
+  };
+}
+
+function eventViews(state: GameState): EventView[] {
+  const out: EventView[] = [];
+  for (const e of state.events) {
+    switch (e.type) {
+      case 'shot': out.push({ type: 'shot', playerId: e.playerId }); break;
+      case 'swing': out.push({ type: 'swing', playerId: e.playerId, hitIds: [...e.hitIds] }); break;
+      case 'hit': out.push({ type: 'hit', attackerId: e.attackerId, targetId: e.targetId, weapon: e.weapon, damage: e.damage }); break;
+      case 'death': out.push({ type: 'death', playerId: e.playerId, killerId: e.killerId, livesLeft: e.livesLeft }); break;
+      case 'eliminated': out.push({ type: 'eliminated', playerId: e.playerId }); break;
+      case 'respawn': out.push({ type: 'respawn', playerId: e.playerId, x: e.x, y: e.y }); break;
+      case 'pickup': out.push({ type: 'pickup', playerId: e.playerId, itemType: e.itemType }); break;
+    }
+  }
+  return out;
+}
+
+/**
+ * The state bots see for the upcoming tick, shared by all bots. `self` is filled
+ * in per bot (the worker harness sets it to players[selfId]), so the same object
+ * can be posted to every worker.
+ */
+export function buildBotState(state: GameState): Omit<BotState, 'self'> {
+  const { config } = state;
+  return {
+    tick: state.tick,
+    time: state.tick / config.tickRate,
+    timeLeft: state.timeLimitTicks > 0 ? Math.max(0, state.timeLimitTicks - state.tick) / config.tickRate : null,
+    players: state.players.map((p) => playerView(state, p)),
+    bullets: state.bullets.map((b) => ({
+      id: b.id, ownerId: b.ownerId, x: b.x, y: b.y, vx: b.vx, vy: b.vy, radius: config.gun.bulletRadius,
+    })),
+    grenades: [],
+    mines: [],
+    explosions: [],
+    items: state.items.map((it) => ({ id: it.id, type: it.type, x: it.x, y: it.y })),
+    events: eventViews(state),
+  };
+}
+
+/** Attach `self` for one bot (used in-process and by the worker harness). */
+export function withSelf(shared: Omit<BotState, 'self'>, selfId: number): BotState {
+  return { ...shared, self: shared.players[selfId] };
+}
+
+export function buildInitInfo(state: GameState, selfId: number): InitInfo {
+  const { map } = state;
+  return {
+    selfId,
+    players: state.players.map((p) => ({ id: p.id, name: p.name })),
+    map: {
+      id: map.id,
+      name: map.name,
+      width: map.width,
+      height: map.height,
+      walls: map.walls.map((w) => ({ x: w.x, y: w.y, w: w.w, h: w.h })),
+      spawns: map.spawns.map((s) => ({ x: s.x, y: s.y })),
+      gunSpawns: map.gunSpawns.map((g) => ({ x: g.x, y: g.y })),
+      bushes: (map.bushes ?? []).map((b) => ({ x: b.x, y: b.y, w: b.w, h: b.h })),
+    },
+    rules: JSON.parse(JSON.stringify(state.config)),
+    timeLimit: state.timeLimitTicks / state.config.tickRate,
+  };
+}

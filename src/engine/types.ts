@@ -2,7 +2,7 @@ import type { GameConfig, ItemType } from './config.ts';
 import type { Rect } from './geometry.ts';
 import type { Rng } from './rng.ts';
 
-export type Weapon = 'knife' | 'gun';
+export type Weapon = 'knife' | 'gun' | 'launcher';
 
 export interface SpawnPoint {
   x: number;
@@ -20,6 +20,8 @@ export interface MapData {
   walls: Rect[];
   spawns: SpawnPoint[];
   gunSpawns: { x: number; y: number }[];
+  /** Areas that hide players from enemies. They block nothing. */
+  bushes?: Rect[];
 }
 
 /** Sanitized, engine-facing per-tick input for one player. */
@@ -32,6 +34,7 @@ export interface ActionInput {
   attack: boolean;
   /** Requested weapon, or null for no change. */
   weapon: Weapon | null;
+  plantMine: boolean;
 }
 
 export const IDLE_ACTION: Readonly<ActionInput> = Object.freeze({
@@ -40,6 +43,7 @@ export const IDLE_ACTION: Readonly<ActionInput> = Object.freeze({
   aim: null,
   attack: false,
   weapon: null,
+  plantMine: false,
 });
 
 export interface PlayerStats {
@@ -74,10 +78,16 @@ export interface PlayerState {
   eliminatedTick: number;
   weapon: Weapon;
   hasGun: boolean;
+  /** Gun bullets. */
   ammo: number;
+  hasLauncher: boolean;
+  grenades: number;
+  mines: number;
   /** Remaining ticks for each timer; 0 = ready / inactive. */
   knifeCooldown: number;
   gunCooldown: number;
+  launcherCooldown: number;
+  mineCooldown: number;
   switchTimer: number;
   invulnerableTimer: number;
   respawnTimer: number;

@@ -1,0 +1,34 @@
+{
+  "version": 1,
+  "file": "random.js",
+  "sourceHash": "1546693ee93cb4",
+  "reviewedAt": "2026-09-27T23:51:53.576Z",
+  "static": {
+    "ok": true,
+    "findings": []
+  },
+  "jev": {
+    "model": "jev-1.13.0",
+    "risks": {
+      "outsideAccess": 0.03,
+      "globalTampering": 0.05,
+      "backgroundWork": 0.03,
+      "obfuscation": 0.04,
+      "actionExploit": 0.04,
+      "reviewerInjection": 0.04
+    },
+    "conformance": {
+      "choice": "follows",
+      "confidence": 0.82,
+      "follows": 0.88
+    },
+    "quality": {
+      "score": 1.02,
+      "confidence": 0.87,
+      "max": 3
+    },
+    "inputTokens": 1111
+  },
+  "verdict": "pass",
+  "reasons": []
+}

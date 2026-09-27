@@ -16,6 +16,7 @@ export interface GameConfig {
     radius: number;
     speedKnife: number;
     speedGun: number;
+    speedLauncher: number;
     turnRateDegrees: number;
     maxHp: number;
     maxShield: number;
@@ -38,6 +39,33 @@ export interface GameConfig {
     range: number;
     pickupAmmo: number;
     maxAmmo: number;
+  };
+  launcher: {
+    grenadeSpeed: number;
+    grenadeRadius: number;
+    cooldown: number;
+    range: number;
+    pickupAmmo: number;
+    maxAmmo: number;
+    blastRadius: number;
+    centerDamage: number;
+    edgeDamage: number;
+  };
+  mines: {
+    fuse: number;
+    plantCooldown: number;
+    pickupAmount: number;
+    maxCarry: number;
+    blastRadius: number;
+    centerDamage: number;
+    edgeDamage: number;
+  };
+  explosions: {
+    selfDamageFactor: number;
+  };
+  bushes: {
+    revealDistance: number;
+    noiseRevealTime: number;
   };
   respawn: {
     delay: number;
@@ -76,6 +104,7 @@ export const DEFAULT_CONFIG: GameConfig = {
     radius: 16,
     speedKnife: 210,
     speedGun: 190,
+    speedLauncher: 180,
     turnRateDegrees: 540,
     maxHp: 100,
     maxShield: 100,
@@ -98,6 +127,33 @@ export const DEFAULT_CONFIG: GameConfig = {
     range: 900,
     pickupAmmo: 15,
     maxAmmo: 40,
+  },
+  launcher: {
+    grenadeSpeed: 360,
+    grenadeRadius: 6,
+    cooldown: 1.2,
+    range: 700,
+    pickupAmmo: 3,
+    maxAmmo: 6,
+    blastRadius: 80,
+    centerDamage: 70,
+    edgeDamage: 20,
+  },
+  mines: {
+    fuse: 2.5,
+    plantCooldown: 0.5,
+    pickupAmount: 2,
+    maxCarry: 3,
+    blastRadius: 100,
+    centerDamage: 90,
+    edgeDamage: 25,
+  },
+  explosions: {
+    selfDamageFactor: 1,
+  },
+  bushes: {
+    revealDistance: 90,
+    noiseRevealTime: 1,
   },
   respawn: {
     delay: 2,
@@ -141,6 +197,7 @@ export const CONFIG_DOCS: Record<string, ConfigDoc> = {
   'player.radius': { unit: 'u', description: 'Collision radius of every player (players are circles).' },
   'player.speedKnife': { unit: 'u/s', description: 'Maximum movement speed while holding the knife.' },
   'player.speedGun': { unit: 'u/s', description: 'Maximum movement speed while holding the gun.' },
+  'player.speedLauncher': { unit: 'u/s', description: 'Maximum movement speed while holding the grenade launcher.' },
   'player.turnRateDegrees': { unit: 'deg/s', description: 'Maximum rate at which facing rotates toward the requested aim angle.' },
   'player.maxHp': { unit: 'hp', description: 'Health at spawn and the health cap.' },
   'player.maxShield': { unit: 'shield', description: 'Shield cap. Shield absorbs damage before health.' },
@@ -159,6 +216,25 @@ export const CONFIG_DOCS: Record<string, ConfigDoc> = {
   'gun.range': { unit: 'u', description: 'Bullets disappear after travelling this far.' },
   'gun.pickupAmmo': { unit: 'bullets', description: 'Ammo gained from a gun item spawned by the map or the item spawner.' },
   'gun.maxAmmo': { unit: 'bullets', description: 'Ammo cap.' },
+  'launcher.grenadeSpeed': { unit: 'u/s', description: 'Grenade speed (constant, straight line).' },
+  'launcher.grenadeRadius': { unit: 'u', description: 'Grenade collision radius.' },
+  'launcher.cooldown': { unit: 's', description: 'Minimum time between grenade shots.' },
+  'launcher.range': { unit: 'u', description: 'A grenade explodes by itself after travelling this far.' },
+  'launcher.pickupAmmo': { unit: 'grenades', description: 'Grenades gained from a launcher item.' },
+  'launcher.maxAmmo': { unit: 'grenades', description: 'Grenade cap.' },
+  'launcher.blastRadius': { unit: 'u', description: 'Grenade explosion radius (measured to the edge of a target).' },
+  'launcher.centerDamage': { unit: 'hp', description: 'Grenade damage at the centre of the explosion.' },
+  'launcher.edgeDamage': { unit: 'hp', description: 'Grenade damage at the edge of the blast radius (linear falloff in between).' },
+  'mines.fuse': { unit: 's', description: 'A planted mine explodes this long after being planted.' },
+  'mines.plantCooldown': { unit: 's', description: 'Minimum time between planting two mines.' },
+  'mines.pickupAmount': { unit: 'mines', description: 'Mines gained from a mines item.' },
+  'mines.maxCarry': { unit: 'mines', description: 'Maximum mines carried.' },
+  'mines.blastRadius': { unit: 'u', description: 'Mine explosion radius (measured to the edge of a target).' },
+  'mines.centerDamage': { unit: 'hp', description: 'Mine damage at the centre of the explosion.' },
+  'mines.edgeDamage': { unit: 'hp', description: 'Mine damage at the edge of the blast radius (linear falloff in between).' },
+  'explosions.selfDamageFactor': { unit: 'x', description: 'Multiplier for damage you take from your own explosions (1 = full damage).' },
+  'bushes.revealDistance': { unit: 'u', description: 'An enemy in a bush is visible to you if the centres are at most this far apart.' },
+  'bushes.noiseRevealTime': { unit: 's', description: 'A player in a bush stays visible this long after attacking or taking damage.' },
   'respawn.delay': { unit: 's', description: 'Time between losing a life and respawning.' },
   'respawn.invulnerability': { unit: 's', description: 'Invulnerability after (re)spawning; ends early when you attack.' },
   'respawn.safeDistance': { unit: 'u', description: 'Respawn picks a random spawn point at least this far from every living enemy (else the farthest one).' },
