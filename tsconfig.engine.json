@@ -1,0 +1,9 @@
+{
+  "//": "Type-checks the engine without DOM or Node typings, so it stays portable.",
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "lib": ["ES2022"],
+    "types": []
+  },
+  "include": ["src/engine"]
+}
