@@ -228,20 +228,36 @@ export class Renderer {
       const q = prev?.bullets.get(b.id);
       const x = q ? lerp(q.x, b.x, alpha) : b.x;
       const y = q ? lerp(q.y, b.y, alpha) : b.y;
-      const tail = 0.035;
-      ctx.strokeStyle = 'rgba(255,224,138,0.35)';
-      ctx.lineWidth = r * 1.5;
+      const color = playerColor(b.ownerId);
+
+      // Soft glow in the shooter's colour so small bullets stay easy to spot.
+      const glow = ctx.createRadialGradient(x, y, 0, x, y, r * 3.5);
+      glow.addColorStop(0, `${color}88`);
+      glow.addColorStop(1, `${color}00`);
+      ctx.fillStyle = glow;
       ctx.beginPath();
-      ctx.moveTo(x - b.vx * tail, y - b.vy * tail);
-      ctx.lineTo(x, y);
-      ctx.stroke();
-      ctx.fillStyle = playerColor(b.ownerId);
-      ctx.beginPath();
-      ctx.arc(x, y, r, 0, Math.PI * 2);
+      ctx.arc(x, y, r * 3.5, 0, Math.PI * 2);
       ctx.fill();
-      ctx.strokeStyle = '#fff6d0';
+
+      // Slug pointing along its velocity, sized close to the circular hitbox.
+      const hl = r * 1.3;
+      const hw = r * 0.8;
+      ctx.save();
+      ctx.translate(x, y);
+      ctx.rotate(Math.atan2(b.vy, b.vx));
+      ctx.beginPath();
+      ctx.moveTo(-hl, -hw);
+      ctx.lineTo(hl - hw, -hw);
+      ctx.quadraticCurveTo(hl, -hw, hl, 0);
+      ctx.quadraticCurveTo(hl, hw, hl - hw, hw);
+      ctx.lineTo(-hl, hw);
+      ctx.closePath();
+      ctx.fillStyle = '#ffe9a8';
+      ctx.fill();
+      ctx.strokeStyle = color;
       ctx.lineWidth = 1.5;
       ctx.stroke();
+      ctx.restore();
     }
   }
 
@@ -406,6 +422,10 @@ export class Renderer {
       ctx.beginPath();
       ctx.moveTo(b.x, b.y);
       ctx.lineTo(b.x + b.vx, b.y + b.vy);
+      ctx.stroke();
+      ctx.strokeStyle = 'rgba(255,80,80,0.9)';
+      ctx.beginPath();
+      ctx.arc(b.x, b.y, state.config.gun.bulletRadius, 0, Math.PI * 2);
       ctx.stroke();
     }
   }
