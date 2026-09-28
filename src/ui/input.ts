@@ -5,7 +5,8 @@ import type { Renderer } from '../render/renderer.ts';
 /**
  * Keyboard + mouse player for testing rule feel.
  * WASD / arrows: move · mouse: aim · left click or Space: attack ·
- * 1: knife · 2: gun · 3: launcher · 4: laser · Q: next owned weapon · E or right click: plant mine.
+ * 1: knife · 2: gun · 3: launcher · 4: laser · Q: next owned weapon · E or right click: plant mine ·
+ * F: throw smoke · C: throw gas (both land at the mouse cursor, up to the maximum distance).
  */
 export class HumanController implements Controller {
   readonly label = 'human';
@@ -17,6 +18,7 @@ export class HumanController implements Controller {
   private pendingWeapon: Weapon | null = null;
   private toggleWeapon = false;
   private plantMine = false;
+  private pendingThrow: 'smoke' | 'gas' | null = null;
   private readonly canvas: HTMLCanvasElement;
   private readonly renderer: Renderer;
   private readonly cleanup: Array<() => void> = [];
@@ -67,6 +69,8 @@ export class HumanController implements Controller {
       if (e.code === 'Digit3') this.pendingWeapon = 'launcher';
       if (e.code === 'Digit4') this.pendingWeapon = 'laser';
       if (e.code === 'KeyE' && !e.repeat) this.plantMine = true;
+      if (e.code === 'KeyF' && !e.repeat) this.pendingThrow = 'smoke';
+      if (e.code === 'KeyC' && !e.repeat) this.pendingThrow = 'gas';
       if (e.code === 'Space' && !e.repeat) this.clicked = true;
       if (e.code === 'KeyQ' && !e.repeat) this.toggleWeapon = true;
     } else {
@@ -80,6 +84,7 @@ export class HumanController implements Controller {
       this.pendingWeapon = null;
       this.toggleWeapon = false;
       this.plantMine = false;
+      this.pendingThrow = null;
       this.clicked = false;
       return IDLE_ACTION;
     }
@@ -91,9 +96,11 @@ export class HumanController implements Controller {
       my *= Math.SQRT1_2;
     }
     let aim: number | null = null;
+    let cursorDistance: number | null = null;
     if (this.mouse) {
       const w = this.renderer.screenToWorld(this.mouse.x, this.mouse.y);
       aim = Math.atan2(w.y - self.y, w.x - self.x);
+      cursorDistance = Math.hypot(w.x - self.x, w.y - self.y);
     }
     let weapon = this.pendingWeapon;
     if (this.toggleWeapon) {
@@ -104,12 +111,14 @@ export class HumanController implements Controller {
       weapon = owned[(owned.indexOf(self.weapon) + 1) % owned.length];
     }
     const plantMine = this.plantMine;
+    const throwKind = this.pendingThrow;
+    this.pendingThrow = null;
     const attack = this.mouseDown || k.has('Space') || this.clicked;
     this.pendingWeapon = null;
     this.toggleWeapon = false;
     this.plantMine = false;
     this.clicked = false;
-    return { moveX: mx, moveY: my, aim, attack, weapon, plantMine };
+    return { moveX: mx, moveY: my, aim, attack, weapon, plantMine, throwKind, throwDistance: throwKind ? cursorDistance : null };
   }
 
   dispose(): void {

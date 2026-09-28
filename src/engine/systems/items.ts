@@ -6,8 +6,10 @@ import { insideZone, zoneAt, zoneShrinking } from './zone.ts';
 
 /** Would picking up this item do anything for the player? Useless items are left on the ground. */
 export function canUseItem(state: GameState, p: PlayerState, type: ItemType): boolean {
-  const { player, gun, launcher, laser, mines } = state.config;
+  const { player, gun, launcher, laser, mines, smoke, gas } = state.config;
   switch (type) {
+    case 'smoke': return p.smokes < smoke.maxCarry;
+    case 'gas': return p.gases < gas.maxCarry;
     case 'launcher': return !p.hasLauncher || p.grenades < launcher.maxAmmo;
     case 'laser': return !p.hasLaser || p.laserShots < laser.maxAmmo;
     case 'mines': return p.mines < mines.maxCarry;
@@ -20,8 +22,14 @@ export function canUseItem(state: GameState, p: PlayerState, type: ItemType): bo
 }
 
 function applyItem(state: GameState, p: PlayerState, item: Item): void {
-  const { player, gun, items, launcher, laser, mines } = state.config;
+  const { player, gun, items, launcher, laser, mines, smoke, gas } = state.config;
   switch (item.type) {
+    case 'smoke':
+      p.smokes = Math.min(smoke.maxCarry, p.smokes + item.ammo);
+      break;
+    case 'gas':
+      p.gases = Math.min(gas.maxCarry, p.gases + item.ammo);
+      break;
     case 'laser':
       p.hasLaser = true;
       p.laserShots = Math.min(laser.maxAmmo, p.laserShots + item.ammo);
@@ -104,9 +112,9 @@ export function refillGunPads(state: GameState): void {
 
 /** Ammo (or count) a freshly spawned item of this type carries. */
 export function defaultItemAmmo(state: GameState, type: ItemType): number {
-  const { gun, launcher, laser, mines } = state.config;
+  const { gun, launcher, laser, mines, smoke, gas } = state.config;
   return type === 'gun' ? gun.pickupAmmo : type === 'launcher' ? launcher.pickupAmmo : type === 'laser' ? laser.pickupAmmo
-    : type === 'mines' ? mines.pickupAmount : 0;
+    : type === 'mines' ? mines.pickupAmount : type === 'smoke' ? smoke.pickupAmount : type === 'gas' ? gas.pickupAmount : 0;
 }
 
 /**

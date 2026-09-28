@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { sanitizeAction, unknownActionKeys } from '../../src/engine/sanitize.ts';
+import { normalizeAction, sanitizeAction, unknownActionKeys } from '../../src/engine/sanitize.ts';
 import { Rng } from '../../src/engine/rng.ts';
 
 describe('sanitizeAction', () => {
@@ -14,7 +14,17 @@ describe('sanitizeAction', () => {
   it('accepts a normal action', () => {
     const r = sanitizeAction({ move: { x: 0.6, y: -0.8 }, aim: 1.5, attack: true, weapon: 'gun', plantMine: true });
     expect(r.valid).toBe(true);
-    expect(r.action).toEqual({ moveX: 0.6, moveY: -0.8, aim: 1.5, attack: true, weapon: 'gun', plantMine: true });
+    expect(r.action).toEqual({ moveX: 0.6, moveY: -0.8, aim: 1.5, attack: true, weapon: 'gun', plantMine: true, throwKind: null, throwDistance: null });
+  });
+
+  it('accepts throws, and rejects a bad throw kind or distance', () => {
+    expect(sanitizeAction({ throw: 'gas', throwDistance: 120 }).action).toMatchObject({ throwKind: 'gas', throwDistance: 120 });
+    expect(sanitizeAction({ throw: 'smoke' }).action).toMatchObject({ throwKind: 'smoke', throwDistance: null });
+    expect(sanitizeAction({ throw: 'grenade' }).valid).toBe(false);
+    expect(sanitizeAction({ throw: 'gas', throwDistance: Infinity }).valid).toBe(false);
+    // A distance without a throw means nothing, so it is dropped.
+    expect(normalizeAction(sanitizeAction({ throwDistance: 50 }).action).throwDistance).toBeNull();
+    expect(normalizeAction(sanitizeAction({ throw: 'gas', throwDistance: -5 }).action).throwDistance).toBe(0);
   });
 
   it('clamps move to length 1 and normalizes aim', () => {

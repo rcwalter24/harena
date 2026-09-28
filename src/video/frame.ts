@@ -64,11 +64,12 @@ export function feedLines(events: readonly GameEvent[], state: GameState): Part[
   for (const e of events) {
     if (e.type === 'death') {
       if (e.killerId >= 0) {
-        const how = t(e.weapon === 'gun' ? ' shot ' : e.weapon === 'knife' ? ' knifed ' : e.weapon === 'laser' ? ' lasered ' : ' blew up ');
+        const how = t(e.weapon === 'gun' ? ' shot ' : e.weapon === 'knife' ? ' knifed ' : e.weapon === 'laser' ? ' lasered '
+          : e.weapon === 'gas' ? ' gassed ' : ' blew up ');
         lines.push([who(e.killerId), { text: how, color: MUTED }, who(e.playerId)]);
       } else {
         const how = t(e.weapon === 'launcher' || e.weapon === 'mine' ? ' blew themselves up' : e.weapon === 'laser' ? ' was hit by their own laser'
-          : e.weapon === 'zone' ? ' was caught outside the zone' : ' died');
+          : e.weapon === 'gas' ? ' choked on their own gas' : e.weapon === 'zone' ? ' was caught outside the zone' : ' died');
         lines.push([who(e.playerId), { text: how, color: MUTED }]);
       }
     } else if (e.type === 'eliminated') {
@@ -197,6 +198,8 @@ function drawCard(ctx: Ctx, state: GameState, p: PlayerState, source: string, x:
     if (p.hasLauncher) status.push({ text: ' · ', color: MUTED }, weapon('launcher', ` ${p.grenades}`));
     if (p.hasLaser) status.push({ text: ' · ', color: MUTED }, weapon('laser', ` ${p.laserShots}`));
     if (p.mines > 0) status.push({ text: ` · ${t('mines {n}', { n: p.mines })}`, color: MUTED });
+    if (p.smokes > 0) status.push({ text: ` · ${t('smoke {n}', { n: p.smokes })}`, color: MUTED });
+    if (p.gases > 0) status.push({ text: ` · ${t('gas {n}', { n: p.gases })}`, color: MUTED });
   }
   drawParts(ctx, status, x + pad, lineY);
   ctx.textAlign = 'right';

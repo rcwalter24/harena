@@ -22,7 +22,9 @@ function chaos(seed: string): Controller {
     decide: (): ActionInput => ({
       moveX: rng.range(-1.5, 1.5), moveY: Math.SQRT1_2 * rng.range(-1, 1), aim: rng.range(-10, 10),
       attack: rng.next() < 0.3, plantMine: rng.next() < 0.02,
-      weapon: rng.next() < 0.05 ? (['knife', 'gun', 'launcher'] as const)[rng.int(3)] : null,
+      weapon: rng.next() < 0.05 ? (['knife', 'gun', 'launcher', 'laser'] as const)[rng.int(4)] : null,
+      throwKind: rng.next() < 0.02 ? (rng.next() < 0.5 ? 'smoke' : 'gas') : null,
+      throwDistance: rng.next() < 0.5 ? rng.range(-50, 500) : null,
     }),
   };
 }

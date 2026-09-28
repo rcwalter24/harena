@@ -45,6 +45,8 @@ export class PlayerCards {
         p.hasLauncher ? `${label('launcher')} ${p.grenades}` : '',
         p.hasLaser ? `${label('laser')} ${p.laserShots}` : '',
         p.mines > 0 ? t('mines {n}', { n: p.mines }) : '',
+        p.smokes > 0 ? t('smoke {n}', { n: p.smokes }) : '',
+        p.gases > 0 ? t('gas {n}', { n: p.gases }) : '',
       ].filter(Boolean);
       const weapon = [label('knife'), ...owned].join(' · ');
       card.innerHTML = `
@@ -96,11 +98,11 @@ export class KillFeed {
       };
       if (e.type === 'death') {
         if (e.killerId >= 0) {
-          const icon = e.weapon === 'gun' ? ' ⁍ ' : e.weapon === 'knife' ? ' 🗡 ' : e.weapon === 'laser' ? ' ⚡ ' : ' 💥 ';
+          const icon = e.weapon === 'gun' ? ' ⁍ ' : e.weapon === 'knife' ? ' 🗡 ' : e.weapon === 'laser' ? ' ⚡ ' : e.weapon === 'gas' ? ' ☠ ' : ' 💥 ';
           row.append(name(e.killerId), el('span', 'how', icon), name(e.playerId));
         } else {
           const how = e.weapon === 'launcher' || e.weapon === 'mine' ? ' blew themselves up' : e.weapon === 'laser' ? ' was hit by their own laser'
-            : e.weapon === 'zone' ? ' was caught outside the zone' : ' died';
+            : e.weapon === 'gas' ? ' choked on their own gas' : e.weapon === 'zone' ? ' was caught outside the zone' : ' died';
           row.append(name(e.playerId), el('span', 'how', t(how)));
         }
       } else {

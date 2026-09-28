@@ -11,7 +11,10 @@
 
 export type WeaponName = 'knife' | 'gun' | 'launcher' | 'laser';
 
-export type ItemType = 'ammo' | 'shield' | 'health' | 'gun' | 'life' | 'launcher' | 'mines' | 'laser';
+export type ItemType = 'ammo' | 'shield' | 'health' | 'gun' | 'life' | 'launcher' | 'mines' | 'laser' | 'smoke' | 'gas';
+
+/** Grenades you throw (they slide to a stop, then turn into a cloud). */
+export type ThrowName = 'smoke' | 'gas';
 
 export interface Vec2 {
   x: number;
@@ -100,6 +103,9 @@ export interface PlayerView {
   laserCharge: number;
   /** Mines carried. */
   mines: number;
+  /** Smoke and gas grenades carried. */
+  smokeGrenades: number;
+  gasGrenades: number;
   /** Seconds until each action is available again (0 = ready now). */
   cooldowns: {
     knife: number;
@@ -108,6 +114,8 @@ export interface PlayerView {
     /** Until you can start charging the laser again (it starts after a shot fires). */
     laser: number;
     mine: number;
+    /** Until you can throw a smoke or gas grenade again. */
+    throw: number;
     /** Weapon switching: no attacks until this reaches 0. */
     switch: number;
   };
@@ -162,6 +170,34 @@ export interface LaserView {
   path: Vec2[];
 }
 
+/** A smoke or gas grenade sliding along the floor; it slows down at rules.throwing.deceleration u/s². */
+export interface ThrownView {
+  id: number;
+  ownerId: number;
+  kind: ThrowName;
+  x: number;
+  y: number;
+  vx: number;
+  vy: number;
+}
+
+/**
+ * A smoke or gas cloud (a circle). Smoke works like a bush. Gas hurts everyone whose centre is
+ * inside at each whole second of its life, and slows them down.
+ */
+export interface CloudView {
+  id: number;
+  ownerId: number;
+  kind: ThrowName;
+  x: number;
+  y: number;
+  radius: number;
+  /** Seconds until it disappears. */
+  timeLeft: number;
+  /** Gas only: seconds until its next damage (at each whole second of its life); null for smoke. */
+  nextDamageIn: number | null;
+}
+
 /** An explosion that happened during the last tick. */
 export interface ExplosionView {
   ownerId: number;
@@ -206,7 +242,7 @@ export interface ItemView {
 export type EventView =
   | { type: 'shot'; playerId: number }
   | { type: 'swing'; playerId: number; hitIds: number[] }
-  | { type: 'hit'; attackerId: number; targetId: number; weapon: WeaponName | 'explosion' | 'zone'; damage: number }
+  | { type: 'hit'; attackerId: number; targetId: number; weapon: WeaponName | 'explosion' | 'zone' | 'gas'; damage: number }
   /** A laser fired: its path (start, bounce points, end) and the player it hit, or null. */
   | { type: 'laser'; playerId: number; path: Vec2[]; hitId: number | null }
   | { type: 'death'; playerId: number; killerId: number; livesLeft: number }
@@ -231,6 +267,10 @@ export interface BotState {
   mines: MineView[];
   /** Lasers being charged (their warning lines). */
   lasers: LaserView[];
+  /** Smoke and gas grenades still sliding. */
+  thrown: ThrownView[];
+  /** Smoke and gas clouds. */
+  clouds: CloudView[];
   explosions: ExplosionView[];
   items: ItemView[];
   events: EventView[];
@@ -252,4 +292,8 @@ export interface Action {
   weapon?: WeaponName;
   /** Plant a mine at your position (needs a carried mine and a ready mine cooldown). */
   plantMine?: boolean;
+  /** Throw a smoke or gas grenade along your facing (needs one carried and a ready throw cooldown). */
+  throw?: ThrowName;
+  /** How far the thrown grenade should slide, in u (default and maximum: rules.throwing.maxDistance). */
+  throwDistance?: number;
 }

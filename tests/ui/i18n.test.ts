@@ -33,7 +33,7 @@ const INDIRECT = [
   'follows', 'partial', 'broken',
   'reviewed ✓', 'review: warning', 'review: danger', 'blocked', 'review failed', 'changed since review', 'not reviewed', 'checked ✓',
   'Last one standing', 'Everyone eliminated', 'Time limit',
-  ' blew themselves up', ' was caught outside the zone', ' died', ' was hit by their own laser',
+  ' blew themselves up', ' was caught outside the zone', ' died', ' was hit by their own laser', ' choked on their own gas',
 ];
 
 const placeholders = (text: string) => [...text.matchAll(/\{(\w+)\}/g)].map((m) => m[1]).sort();

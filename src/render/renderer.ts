@@ -1,8 +1,9 @@
-import { secondsToTicks, type ItemType } from '../engine/config.ts';
+import { secondsToTicks } from '../engine/config.ts';
 import { laserSegments } from '../engine/systems/laser.ts';
 import { bushAt, hideLeft, isExposed, isVisibleTo } from '../engine/systems/visibility.ts';
 import { zoneAt, zoneEnabled } from '../engine/systems/zone.ts';
-import type { GameEvent, GameState, PlayerState } from '../engine/types.ts';
+import type { Cloud, GameEvent, GameState, PlayerState } from '../engine/types.ts';
+import { drawItemIcon } from './icons.ts';
 
 export const PLAYER_COLORS = ['#4fc3f7', '#ff7043', '#9ccc65', '#ba68c8', '#ffd54f', '#4db6ac', '#f06292', '#a1887f'];
 
@@ -10,22 +11,13 @@ export function playerColor(id: number): string {
   return PLAYER_COLORS[id % PLAYER_COLORS.length];
 }
 
-const ITEM_STYLE: Record<ItemType, { fill: string; label: string }> = {
-  gun: { fill: '#e0823d', label: 'G' },
-  ammo: { fill: '#e6c34a', label: 'A' },
-  shield: { fill: '#4a90e2', label: 'S' },
-  health: { fill: '#e05555', label: '+' },
-  life: { fill: '#e36fb4', label: '♥' },
-  launcher: { fill: '#8fae5a', label: 'L' },
-  mines: { fill: '#c0563f', label: 'M' },
-  laser: { fill: '#e27bf0', label: 'Z' },
-};
 
 /** Positions from the previous tick, used to interpolate between ticks. */
 export interface FrameCapture {
   players: { x: number; y: number; facing: number; alive: boolean }[];
   bullets: Map<number, { x: number; y: number }>;
   grenades: Map<number, { x: number; y: number }>;
+  thrown: Map<number, { x: number; y: number }>;
 }
 
 export function captureFrame(state: GameState): FrameCapture {
@@ -33,6 +25,7 @@ export function captureFrame(state: GameState): FrameCapture {
     players: state.players.map((p) => ({ x: p.x, y: p.y, facing: p.facing, alive: p.alive })),
     bullets: new Map(state.bullets.map((b) => [b.id, { x: b.x, y: b.y }])),
     grenades: new Map(state.grenades.map((g) => [g.id, { x: g.x, y: g.y }])),
+    thrown: new Map(state.throwables.map((g) => [g.id, { x: g.x, y: g.y }])),
   };
 }
 
@@ -184,8 +177,10 @@ export class Renderer {
     this.drawPads(state);
     this.drawItems(state);
     this.drawMines(state);
+    this.drawClouds(state, 'gas');
     this.drawBullets(state, prev, alpha);
     this.drawGrenades(state, prev, alpha);
+    this.drawThrown(state, prev, alpha);
 
     const positions = state.players.map((p) => {
       const q = prev?.players[p.id];
@@ -205,6 +200,7 @@ export class Renderer {
       this.drawPlayer(state, p, positions[p.id], p.id === opts.focusId);
       ctx.globalAlpha = 1;
     }
+    this.drawClouds(state, 'smoke');
     this.drawEffects();
     if (opts.debug) this.drawDebugOver(state, shown);
     ctx.restore();
@@ -359,23 +355,8 @@ export class Renderer {
   }
 
   private drawItems(state: GameState): void {
-    const { ctx } = this;
     const r = state.config.items.radius;
-    for (const it of state.items) {
-      const style = ITEM_STYLE[it.type];
-      ctx.fillStyle = style.fill;
-      ctx.beginPath();
-      ctx.arc(it.x, it.y, r, 0, Math.PI * 2);
-      ctx.fill();
-      ctx.strokeStyle = 'rgba(0,0,0,0.5)';
-      ctx.lineWidth = 2;
-      ctx.stroke();
-      ctx.fillStyle = '#10131a';
-      ctx.font = 'bold 13px system-ui, sans-serif';
-      ctx.textAlign = 'center';
-      ctx.textBaseline = 'middle';
-      ctx.fillText(style.label, it.x, it.y + 1);
-    }
+    for (const it of state.items) drawItemIcon(this.ctx, it.type, it.x, it.y, r);
   }
 
   private drawBullets(state: GameState, prev: FrameCapture | null, alpha: number): void {
@@ -414,6 +395,79 @@ export class Renderer {
       ctx.strokeStyle = color;
       ctx.lineWidth = 1.5;
       ctx.stroke();
+      ctx.restore();
+    }
+  }
+
+  /** Smoke and gas grenades sliding to a stop: small canisters with a glow in the thrower's colour. */
+  private drawThrown(state: GameState, prev: FrameCapture | null, alpha: number): void {
+    const { ctx } = this;
+    const r = state.config.throwing.radius * 1.5;
+    for (const g of state.throwables) {
+      const q = prev?.thrown.get(g.id);
+      const x = q ? lerp(q.x, g.x, alpha) : g.x;
+      const y = q ? lerp(q.y, g.y, alpha) : g.y;
+      const color = playerColor(g.ownerId);
+      const glow = ctx.createRadialGradient(x, y, 0, x, y, r * 3);
+      glow.addColorStop(0, `${color}88`);
+      glow.addColorStop(1, `${color}00`);
+      ctx.fillStyle = glow;
+      ctx.beginPath();
+      ctx.arc(x, y, r * 3, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.save();
+      ctx.translate(x, y);
+      // Tumbling while it slides.
+      ctx.rotate(this.clock() / 90 + g.id);
+      ctx.fillStyle = g.kind === 'gas' ? '#7fa83a' : '#8c96a3';
+      ctx.fillRect(-r, -r * 0.6, 2 * r, 1.2 * r);
+      ctx.strokeStyle = color;
+      ctx.lineWidth = 1.5;
+      ctx.strokeRect(-r, -r * 0.6, 2 * r, 1.2 * r);
+      ctx.restore();
+    }
+  }
+
+  /**
+   * Clouds. Gas is drawn under the players (a green haze that pulses on each damage second);
+   * smoke over them, thick enough to read as cover. Both fade in and out.
+   */
+  private drawClouds(state: GameState, kind: Cloud['kind']): void {
+    const { ctx } = this;
+    const rate = state.config.tickRate;
+    for (const c of state.clouds) {
+      if (c.kind !== kind) continue;
+      const fade = Math.min(1, c.age / (0.3 * rate), c.ticksLeft / rate);
+      ctx.save();
+      if (kind === 'smoke') {
+        // A lumpy cloud: a core plus puffs at fixed angles (from the id, so each cloud differs).
+        ctx.globalAlpha = 0.62 * fade;
+        ctx.fillStyle = '#c3c9d2';
+        ctx.beginPath();
+        ctx.arc(c.x, c.y, c.radius * 0.72, 0, Math.PI * 2);
+        ctx.fill();
+        for (let i = 0; i < 8; i++) {
+          const a = (i / 8) * Math.PI * 2 + (c.id % 7) * 0.4 + c.age / (rate * 12);
+          const d = c.radius * (0.5 + 0.08 * ((c.id + i) % 3));
+          ctx.beginPath();
+          ctx.arc(c.x + Math.cos(a) * d, c.y + Math.sin(a) * d, c.radius * 0.42, 0, Math.PI * 2);
+          ctx.fill();
+        }
+      } else {
+        const pulse = 1 - (c.age % rate) / rate;
+        const fill = ctx.createRadialGradient(c.x, c.y, 0, c.x, c.y, c.radius);
+        fill.addColorStop(0, `rgba(150, 205, 70, ${0.42 * fade})`);
+        fill.addColorStop(1, `rgba(120, 180, 50, ${0.18 * fade})`);
+        ctx.fillStyle = fill;
+        ctx.beginPath();
+        ctx.arc(c.x, c.y, c.radius, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.strokeStyle = `rgba(170, 225, 90, ${(0.35 + 0.45 * pulse * pulse) * fade})`;
+        ctx.lineWidth = 2;
+        ctx.setLineDash([6, 6]);
+        ctx.lineDashOffset = c.age / 2;
+        ctx.stroke();
+      }
       ctx.restore();
     }
   }

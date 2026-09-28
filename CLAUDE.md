@@ -31,7 +31,8 @@ git history; this file lists the rules that must keep holding.
 - **Tick order** is documented in `game.ts` `step()` and in BOT_API.md §4 — keep them in sync.
 - **Visibility**: bots and a human player only see what `isVisibleTo` allows (bushes). The
   renderer takes `viewerId` for the human; spectators see everything. Scripted dummies also
-  respect visibility. Don't leak hidden positions through events.
+  respect visibility. Don't leak hidden positions through events. Smoke clouds count as bushes
+  (`bushAt`), so every bush rule applies to them.
 - **Sandbox**: bots run in Web Workers (browser) / worker_threads (Node) via the shared
   `src/sandbox/harness.ts`; `BotController` (`src/match/supervisor.ts`) enforces budgets,
   failure streaks and hang → restart once → disable. This is isolation, not a hard security

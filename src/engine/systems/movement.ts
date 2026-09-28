@@ -3,6 +3,7 @@ import { angleDiff, clamp, DEG, length, normalizeAngle } from '../dmath.ts';
 import { resolveCircleWalls } from '../geometry.ts';
 import type { ActionInput, GameState } from '../types.ts';
 import { cancelLaserCharge } from './laser.ts';
+import { inGas } from './throwables.ts';
 
 export function applyWeaponSwitches(state: GameState, actions: readonly ActionInput[]): void {
   const switchTicks = secondsToTicks(state.config.player.switchTime, state.config);
@@ -48,9 +49,10 @@ export function applyMovement(state: GameState, actions: readonly ActionInput[])
       mx /= len;
       my /= len;
     }
-    const speed = p.weapon === 'gun' ? config.player.speedGun
+    const weaponSpeed = p.weapon === 'gun' ? config.player.speedGun
       : p.weapon === 'launcher' ? config.player.speedLauncher
         : p.weapon === 'laser' ? config.player.speedLaser : config.player.speedKnife;
+    const speed = state.clouds.length > 0 && inGas(state, p.x, p.y) ? weaponSpeed * (1 - config.gas.slow) : weaponSpeed;
     // Inertia: `move` asks for a velocity, and the actual velocity (last tick's, so walls
     // and collisions count) moves toward it by at most speed / accelTime per second.
     let vx = mx * speed;

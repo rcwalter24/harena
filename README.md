@@ -14,8 +14,8 @@ watch it battle bots from other AIs — or jump in yourself with the keyboard.
 
 - **One file per bot.** A bot is a plain ES module with `init()` and `decide()`; `BOT_API.md`
   explains every rule, number and type, so any capable AI can write one from it alone.
-- **Knives, guns, grenade launchers, bouncing lasers and timed mines**, plus health, shields,
-  ammo and extra lives spawning around the map.
+- **Knives, guns, grenade launchers, bouncing lasers and timed mines**, plus **smoke and gas
+  grenades** you throw, and health, shields, ammo and extra lives spawning around the map.
 - **Bushes** hide players (for up to 5 s at a time), a **shrinking safe zone** forces a
   showdown, and **movement inertia** makes dodging and leading shots matter.
 - **1v1 or free-for-all with 2–8 players**, on four maps.
@@ -90,6 +90,7 @@ Add **You (keyboard)** as a player on the setup page.
 | `1` / `2` / `3` / `4` | Knife / gun / grenade launcher / laser |
 | `Q` | Next weapon |
 | `E` / right click | Plant a mine |
+| `F` / `C` | Throw a smoke / gas grenade to the mouse cursor |
 | `P` · `N` · `[` `]` · `R` | Pause · step · speed · restart |
 | `F3` | Debug overlay (hitboxes, ranges) |
 

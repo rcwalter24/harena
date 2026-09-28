@@ -126,6 +126,50 @@ export function segmentCircleHit(
   return t >= 0 && t <= 1 ? t : null;
 }
 
+export interface SegmentEntry {
+  /** Fraction of the segment at which it enters the rectangle. */
+  t: number;
+  /** The entered face is normal to this axis (reflect that velocity component to bounce). */
+  axis: 'x' | 'y';
+}
+
+/**
+ * Where the segment (x, y) + t·(dx, dy), t in (0, 1], enters `rect` grown by `inflate`, and
+ * through which face. A segment starting inside or on the rectangle does not count.
+ */
+export function segmentRectEntry(x: number, y: number, dx: number, dy: number, rect: Rect, inflate = 0): SegmentEntry | null {
+  const minX = rect.x - inflate;
+  const maxX = rect.x + rect.w + inflate;
+  const minY = rect.y - inflate;
+  const maxY = rect.y + rect.h + inflate;
+  let tMin = -Infinity;
+  let tMax = Infinity;
+  let axis: 'x' | 'y' = 'x';
+  if (dx === 0) {
+    if (x <= minX || x >= maxX) return null;
+  } else {
+    let t1 = (minX - x) / dx;
+    let t2 = (maxX - x) / dx;
+    if (t1 > t2) [t1, t2] = [t2, t1];
+    tMin = t1;
+    tMax = t2;
+  }
+  if (dy === 0) {
+    if (y <= minY || y >= maxY) return null;
+  } else {
+    let t1 = (minY - y) / dy;
+    let t2 = (maxY - y) / dy;
+    if (t1 > t2) [t1, t2] = [t2, t1];
+    if (t1 > tMin) {
+      tMin = t1;
+      axis = 'y';
+    }
+    tMax = Math.min(tMax, t2);
+  }
+  if (tMin > tMax || tMin <= 1e-9 || tMin > 1) return null;
+  return { t: tMin, axis };
+}
+
 /** True if the straight segment between two points does not cross any wall. */
 export function lineOfSight(x0: number, y0: number, x1: number, y1: number, walls: readonly Rect[]): boolean {
   for (const wall of walls) {

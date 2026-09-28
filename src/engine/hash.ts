@@ -32,6 +32,9 @@ export function hashState(state: GameState): string {
     if (p.hasLaser || p.laserShots || p.laserCooldown || p.laserCharge) {
       mix(p.hasLaser ? 1 : 0); mix(p.laserShots); mix(p.laserCooldown); mix(p.laserCharge); mix(p.laserAim);
     }
+    if (p.smokes || p.gases || p.throwCooldown) {
+      mix(p.smokes); mix(p.gases); mix(p.throwCooldown);
+    }
   }
   for (const b of state.bullets) {
     mix(b.id); mix(b.x); mix(b.y); mix(b.vx); mix(b.vy);
@@ -41,6 +44,12 @@ export function hashState(state: GameState): string {
   }
   for (const m of state.mines) {
     mix(m.id); mix(m.x); mix(m.y); mix(m.fuseTimer);
+  }
+  for (const t of state.throwables) {
+    mix(t.id); mix(t.x); mix(t.y); mix(t.vx); mix(t.vy); mix(t.kind === 'gas' ? 1 : 0);
+  }
+  for (const c of state.clouds) {
+    mix(c.id); mix(c.x); mix(c.y); mix(c.age); mix(c.ticksLeft); mix(c.kind === 'gas' ? 1 : 0);
   }
   for (const it of state.items) {
     mix(it.id); mix(it.x); mix(it.y); mix(it.ammo);

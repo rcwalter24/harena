@@ -174,8 +174,8 @@ export const ZH: Record<string, string> = {
   keyboard: '键盘',
   'dummy: {kind}': '假人：{kind}',
   'human player': '真人玩家',
-  '<b>WASD</b> move · <b>mouse</b> aim · <b>click/Space</b> attack<br /><b>1/2/3/4</b> knife/gun/launcher/laser · <b>Q</b> next weapon · <b>E/right click</b> mine<br />':
-    '<b>WASD</b> 移动 · <b>鼠标</b> 瞄准 · <b>左键/空格</b> 攻击<br /><b>1/2/3/4</b> 匕首/枪/榴弹/激光 · <b>Q</b> 切换武器 · <b>E/右键</b> 地雷<br />',
+  '<b>WASD</b> move · <b>mouse</b> aim · <b>click/Space</b> attack<br /><b>1/2/3/4</b> knife/gun/launcher/laser · <b>Q</b> next weapon · <b>E/right click</b> mine · <b>F/C</b> throw smoke/gas to the cursor<br />':
+    '<b>WASD</b> 移动 · <b>鼠标</b> 瞄准 · <b>左键/空格</b> 攻击<br /><b>1/2/3/4</b> 匕首/枪/榴弹/激光 · <b>Q</b> 切换武器 · <b>E/右键</b> 地雷 · <b>F/C</b> 往鼠标处丢烟雾弹/毒气弹<br />',
   '<b>P</b> pause · <b>N</b> step · <b>[ ]</b> speed · <b>R</b> restart · <b>F3</b> debug':
     '<b>P</b> 暂停 · <b>N</b> 单步 · <b>[ ]</b> 调速 · <b>R</b> 重开 · <b>F3</b> 调试',
   '<br />Cheats: <b>G</b> all weapons + ammo + mines · <b>H</b> heal + shield': '<br />作弊：<b>G</b> 全武器 + 弹药 + 地雷 · <b>H</b> 回血 + 护盾',
@@ -282,4 +282,8 @@ export const ZH: Record<string, string> = {
   'out at {time}': '{time} 出局',
   '♥ {lives} · {hp} hp': '♥ {lives} · {hp} 血',
   'mines {n}': '地雷 {n}',
+  'smoke {n}': '烟雾 {n}',
+  'gas {n}': '毒气 {n}',
+  ' choked on their own gas': ' 被自己的毒气毒死了',
+  ' gassed ': ' 用毒气毒死了 ',
 };

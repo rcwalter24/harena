@@ -56,9 +56,9 @@ export function decide(state) {
   Eliminated players rank below all survivors, and a later elimination ranks higher.
   Exact ties share a rank.
 - **The safe zone shrinks.** From 45 s the playable area closes in on the map centre, and
-  standing outside it hurts ([§5.13](#513-safe-zone)). Hiding or waiting out the clock does not work.
+  standing outside it hurts ([§5.14](#514-safe-zone)). Hiding or waiting out the clock does not work.
 - You see the whole map and everything on it. The only exception is enemies hiding in
-  **bushes** ([§5.12](#512-bushes)).
+  **bushes** ([§5.13](#513-bushes)).
 
 ---
 
@@ -86,15 +86,16 @@ fixed order:
 2. **Turning**: facing rotates toward your `aim`.
 3. **Movement**, then walls and player–player collisions.
 4. **Attacks**: knife swings hit instantly, new bullets/grenades start at your centre, and a laser starts
-   charging.
-5. **Projectiles** move along their path (bullets, then grenades), hitting walls or players. Then
-   **lasers** whose charge ran out fire.
-6. **Mines** whose fuse ran out explode, then **explosions** deal damage.
+   charging. Then mines are planted and smoke/gas grenades thrown.
+5. **Projectiles** move along their path (bullets, then grenades, then thrown grenades, which turn
+   into clouds when they stop), hitting walls or players. Then **lasers** whose charge ran out fire.
+6. **Mines** whose fuse ran out explode, then **explosions** deal damage. Then **gas** clouds deal
+   their damage (on whole seconds of their life), and clouds age.
 7. **Zone damage** (on whole seconds) to players outside the safe zone.
 8. **Deaths**: lives are lost, gear is dropped, kills are credited.
 9. **Pickups**.
 10. **Respawns**, and gun pads refill.
-11. **Cooldowns** count down, and time spent in bushes is updated (see [§5.12](#512-bushes)).
+11. **Cooldowns** count down, and time spent in bushes is updated (see [§5.13](#513-bushes)).
 
 Consequences:
 - Your action always reacts to state that is one tick old.
@@ -165,7 +166,7 @@ Consequences:
 - **Attacking starts a charge.** The beam's direction is locked to your facing at that moment, and
   your facing stays locked until it fires. You can keep moving (top speed 190 u/s). After
   **0.75 s** the beam fires from wherever your centre is then. Starting a charge ends
-  invulnerability, and while charging you are revealed like after an attack (see §5.12).
+  invulnerability, and while charging you are revealed like after an attack (see §5.13).
 - **Everyone sees it coming.** `state.lasers` lists every charging laser with `charge` (seconds until it
   fires) and `path`: where the beam would go if it fired now, from the shooter's current centre. Your own
   and everyone's countdown is also `players[i].laserCharge`.
@@ -188,7 +189,26 @@ Consequences:
 - An explosion **immediately detonates every other mine in its radius** (chain reaction).
 - Mines don't block movement. They outlive their owner, and kills still go to the owner.
 
-### 5.8 Explosions
+### 5.8 Smoke and gas grenades
+- Picked up as `smoke` and `gas` items (+1 each; carry at most 2 smoke and 2 gas grenades,
+  shown as `smokeGrenades` and `gasGrenades`).
+- Return `throw: 'smoke'` or `throw: 'gas'` to throw one, whatever weapon you hold (cooldown 0.5 s,
+  `cooldowns.throw`). It leaves your centre along your **facing** and slides along the floor, slowing
+  down at 900 u/s² until it stops. **Choose where with `throwDistance`** (u, default and maximum
+  350): it stops exactly that far away unless a wall is in the way. It bounces off walls
+  (keeping ×0.5 of its speed) and slides past players. Throwing reveals you like an attack and ends
+  invulnerability.
+- Sliding grenades are listed in `state.thrown`. When one stops it becomes a **cloud** centred there
+  (`state.clouds`).
+- **Smoke** (radius 110 u, lasts 8 s) **works exactly like a bush** (§5.13): a player whose
+  centre is in it is hidden from players outside it, the same reveal rules apply, and time in smoke
+  counts toward the hiding limit.
+- **Gas** (radius 100 u, lasts 6 s): at each whole second of the cloud's life (see `nextDamageIn`),
+  every player whose centre is inside takes **12** damage, **the thrower included**. Inside gas
+  your top speed is multiplied by (1 − 0.4). Walls do not stop gas. Gas damage shows up in events
+  as `weapon: 'gas'`, and kills go to the thrower.
+
+### 5.9 Explosions
 - Walls block explosions: a player takes no damage if a wall is on the straight line
   from the blast centre to their centre.
 - **Your own explosions hurt you** (×1 damage). Dying to your own explosive is a suicide,
@@ -197,21 +217,22 @@ Consequences:
 - In `state.events`, explosion damage shows up as `weapon: 'explosion'`. `state.explosions` lists
   every blast from the previous tick.
 
-### 5.9 Weapon switching
+### 5.10 Weapon switching
 - Return `weapon: 'knife' | 'gun' | 'launcher' | 'laser'` to switch; you must own the weapon. The new weapon's
   speed applies at once, but you **cannot attack for 0.3 s** (`cooldowns.switch`).
 - Requesting the weapon you already hold does nothing, so it is safe to send every tick.
 
-### 5.10 Death, respawn, kills
+### 5.11 Death, respawn, kills
 - At 0 hp you lose a life. Your gun (if it has ammo), your launcher (if it has grenades) and your
-  laser (if it has shots) drop where you died as items that keep their ammo. Carried mines drop as a `mines` item.
+  laser (if it has shots) drop where you died as items that keep their ammo. Carried smoke and gas
+  grenades drop as `smoke` and `gas` items. Carried mines drop as a `mines` item.
 - You respawn after 2 s with full hp, 0 shield and only the knife. The spawn point is
   random among spawn points at least 300 u from every living enemy, or the farthest one if
   none qualifies. Once the safe zone shrinks, only spawn points inside it count; if none is left,
   you respawn at a free spot inside the zone, as far from enemies as possible.
 - A kill is credited to the last *other* player who damaged you in that life.
 
-### 5.11 Items
+### 5.12 Items
 Items are circles of radius 12. You pick one up when your centre is within
 **28 u** of it (player radius + item radius). If several players touch it, the closest one gets it.
 **Items you can't use stay on the ground**: full hp, full shield, max ammo, and so on.
@@ -226,14 +247,16 @@ Items are circles of radius 12. You pick one up when your centre is within
 | `launcher` | launcher + its grenades | no launcher yet, or grenades < 6 |
 | `laser` | laser + its shots | no laser yet, or shots < 6 |
 | `mines` | +2 mines | mines < 3 |
+| `smoke` | +1 smoke grenade | smoke grenades < 2 |
+| `gas` | +1 gas grenade | gas grenades < 2 |
 
 Random items appear every 6 s, starting 3 s into the match, at random free spots
 (inside the safe zone once it shrinks). Spawning pauses while 6 spawned items are on the map.
-Spawn weights: ammo 26, shield 18, health 18, gun 10, life 7, launcher 10, mines 15, laser 12.
+Spawn weights: ammo 26, shield 18, health 18, gun 10, life 7, launcher 10, mines 15, laser 12, smoke 8, gas 8.
 
-### 5.12 Bushes
+### 5.13 Bushes
 - Bushes are rectangles in `info.map.bushes`. They block nothing: players, bullets, grenades and
-  explosions pass through them.
+  explosions pass through them. **Smoke clouds (§5.8) are bushes too** for everything below, while they last.
 - A player whose **centre** is inside a bush is **hidden** from an enemy, unless:
   - the enemy is within **90 u** (centre to centre), or its centre is in the same bush, or
   - the hidden player **attacked or took damage in the last 1 s**, or
@@ -250,7 +273,7 @@ Spawn weights: ammo 26, shield 18, health 18, gun 10, life 7, launcher 10, mines
   shows where the shots come from.
 - You always see yourself.
 
-### 5.13 Safe zone
+### 5.14 Safe zone
 - The safe zone is a circle around the **map centre**, described every tick in `state.zone`.
   Its radius follows a fixed schedule:
   1. Until 45 s it covers the whole map.
@@ -261,7 +284,7 @@ Spawn weights: ammo 26, shield 18, health 18, gun 10, life 7, launcher 10, mines
 - At every whole second of match time, each living player whose **centre** is outside the zone
   takes **10 damage**. Shield absorbs it first, and invulnerability blocks it.
 - Zone damage counts as noise, so it reveals a player hiding in a bush outside the zone
-  ([§5.12](#512-bushes)).
+  ([§5.13](#513-bushes)).
 - Dying to the zone gives nobody the kill. In `state.events` zone damage is a `hit` with
   `weapon: 'zone'` and `attackerId` equal to the damaged player's own id.
 - A point is inside if `(x - zone.x)² + (y - zone.y)² <= radius²`. The countdowns
@@ -290,7 +313,10 @@ write your bot in plain JavaScript.
 
 export type WeaponName = 'knife' | 'gun' | 'launcher' | 'laser';
 
-export type ItemType = 'ammo' | 'shield' | 'health' | 'gun' | 'life' | 'launcher' | 'mines' | 'laser';
+export type ItemType = 'ammo' | 'shield' | 'health' | 'gun' | 'life' | 'launcher' | 'mines' | 'laser' | 'smoke' | 'gas';
+
+/** Grenades you throw (they slide to a stop, then turn into a cloud). */
+export type ThrowName = 'smoke' | 'gas';
 
 export interface Vec2 {
   x: number;
@@ -379,6 +405,9 @@ export interface PlayerView {
   laserCharge: number;
   /** Mines carried. */
   mines: number;
+  /** Smoke and gas grenades carried. */
+  smokeGrenades: number;
+  gasGrenades: number;
   /** Seconds until each action is available again (0 = ready now). */
   cooldowns: {
     knife: number;
@@ -387,6 +416,8 @@ export interface PlayerView {
     /** Until you can start charging the laser again (it starts after a shot fires). */
     laser: number;
     mine: number;
+    /** Until you can throw a smoke or gas grenade again. */
+    throw: number;
     /** Weapon switching: no attacks until this reaches 0. */
     switch: number;
   };
@@ -441,6 +472,34 @@ export interface LaserView {
   path: Vec2[];
 }
 
+/** A smoke or gas grenade sliding along the floor; it slows down at rules.throwing.deceleration u/s². */
+export interface ThrownView {
+  id: number;
+  ownerId: number;
+  kind: ThrowName;
+  x: number;
+  y: number;
+  vx: number;
+  vy: number;
+}
+
+/**
+ * A smoke or gas cloud (a circle). Smoke works like a bush. Gas hurts everyone whose centre is
+ * inside at each whole second of its life, and slows them down.
+ */
+export interface CloudView {
+  id: number;
+  ownerId: number;
+  kind: ThrowName;
+  x: number;
+  y: number;
+  radius: number;
+  /** Seconds until it disappears. */
+  timeLeft: number;
+  /** Gas only: seconds until its next damage (at each whole second of its life); null for smoke. */
+  nextDamageIn: number | null;
+}
+
 /** An explosion that happened during the last tick. */
 export interface ExplosionView {
   ownerId: number;
@@ -485,7 +544,7 @@ export interface ItemView {
 export type EventView =
   | { type: 'shot'; playerId: number }
   | { type: 'swing'; playerId: number; hitIds: number[] }
-  | { type: 'hit'; attackerId: number; targetId: number; weapon: WeaponName | 'explosion' | 'zone'; damage: number }
+  | { type: 'hit'; attackerId: number; targetId: number; weapon: WeaponName | 'explosion' | 'zone' | 'gas'; damage: number }
   /** A laser fired: its path (start, bounce points, end) and the player it hit, or null. */
   | { type: 'laser'; playerId: number; path: Vec2[]; hitId: number | null }
   | { type: 'death'; playerId: number; killerId: number; livesLeft: number }
@@ -510,6 +569,10 @@ export interface BotState {
   mines: MineView[];
   /** Lasers being charged (their warning lines). */
   lasers: LaserView[];
+  /** Smoke and gas grenades still sliding. */
+  thrown: ThrownView[];
+  /** Smoke and gas clouds. */
+  clouds: CloudView[];
   explosions: ExplosionView[];
   items: ItemView[];
   events: EventView[];
@@ -531,6 +594,10 @@ export interface Action {
   weapon?: WeaponName;
   /** Plant a mine at your position (needs a carried mine and a ready mine cooldown). */
   plantMine?: boolean;
+  /** Throw a smoke or gas grenade along your facing (needs one carried and a ready throw cooldown). */
+  throw?: ThrowName;
+  /** How far the thrown grenade should slide, in u (default and maximum: rules.throwing.maxDistance). */
+  throwDistance?: number;
 }
 ```
 
@@ -552,12 +619,15 @@ return {
   attack: true,              // use the weapon in hand
   weapon: 'gun',             // switch weapon
   plantMine: false,          // plant a mine here
+  throw: 'smoke',            // throw a smoke or gas grenade along your facing
+  throwDistance: 200,        // …so that it stops 200 u away
 };
 ```
 
 - All fields are optional. `null`, `undefined` or `{}` means stand still, keep facing, and don't attack.
 - Every field must have the right type: `move` must be `{x, y}` with finite numbers, `aim`
-  a finite number, `attack`/`plantMine` booleans, and `weapon` one of the four names. **If any field
+  a finite number, `attack`/`plantMine` booleans, `weapon` one of the four names, `throw` `'smoke'` or
+  `'gas'`, and `throwDistance` a finite number. **If any field
   is malformed, the whole action is rejected** and counts as a failure (see §8).
 - Unknown extra fields are ignored. Speed, rate of fire and damage come only from the
   rules: out-of-range numbers are clamped, never trusted.
@@ -707,6 +777,36 @@ Every value below is also available at runtime as `info.rules.<path>`, for examp
 |---|---|---|---|
 | `explosions.selfDamageFactor` | 1 | x | Multiplier for damage you take from your own explosions (1 = full damage). |
 
+**throwing**
+
+| `info.rules.…` | Value | Unit | Meaning |
+|---|---|---|---|
+| `throwing.maxDistance` | 350 | u | Farthest a smoke or gas grenade slides before stopping (you choose any distance up to this). |
+| `throwing.deceleration` | 900 | u/s² | A thrown grenade slows down at this constant rate until it stops. |
+| `throwing.radius` | 6 | u | Collision radius of a thrown grenade (it bounces off walls; players do not stop it). |
+| `throwing.bounce` | 0.5 | x | Speed kept when a thrown grenade bounces off a wall. |
+| `throwing.cooldown` | 0.5 | s | Minimum time between two throws. |
+
+**smoke**
+
+| `info.rules.…` | Value | Unit | Meaning |
+|---|---|---|---|
+| `smoke.pickupAmount` | 1 | grenades | Smoke grenades gained from a smoke item. |
+| `smoke.maxCarry` | 2 | grenades | Maximum smoke grenades carried. |
+| `smoke.radius` | 110 | u | Radius of the smoke cloud (it works like a bush). |
+| `smoke.duration` | 8 | s | How long the smoke cloud lasts. |
+
+**gas**
+
+| `info.rules.…` | Value | Unit | Meaning |
+|---|---|---|---|
+| `gas.pickupAmount` | 1 | grenades | Gas grenades gained from a gas item. |
+| `gas.maxCarry` | 2 | grenades | Maximum gas grenades carried. |
+| `gas.radius` | 100 | u | Radius of the gas cloud. |
+| `gas.duration` | 6 | s | How long the gas cloud lasts. |
+| `gas.damagePerSecond` | 12 | hp | Damage at every whole second of the cloud's life to each player whose centre is inside it (the thrower too). |
+| `gas.slow` | 0.4 | x | Speed reduction inside gas: top speed is multiplied by (1 − slow). |
+
 **bushes**
 
 | `info.rules.…` | Value | Unit | Meaning |
@@ -756,6 +856,8 @@ Every value below is also available at runtime as `info.rules.<path>`, for examp
 | `items.weights.launcher` | 10 | weight | Relative spawn weight of grenade launcher items. |
 | `items.weights.mines` | 15 | weight | Relative spawn weight of mines items. |
 | `items.weights.laser` | 12 | weight | Relative spawn weight of laser items. |
+| `items.weights.smoke` | 8 | weight | Relative spawn weight of smoke grenade items. |
+| `items.weights.gas` | 8 | weight | Relative spawn weight of gas grenade items. |
 
 **match**
 

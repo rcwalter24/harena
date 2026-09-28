@@ -56,9 +56,9 @@ export function decide(state) {
   Eliminated players rank below all survivors, and a later elimination ranks higher.
   Exact ties share a rank.
 - **The safe zone shrinks.** From {{zone.shrinkStart}} s the playable area closes in on the map centre, and
-  standing outside it hurts ([§5.13](#513-safe-zone)). Hiding or waiting out the clock does not work.
+  standing outside it hurts ([§5.14](#514-safe-zone)). Hiding or waiting out the clock does not work.
 - You see the whole map and everything on it. The only exception is enemies hiding in
-  **bushes** ([§5.12](#512-bushes)).
+  **bushes** ([§5.13](#513-bushes)).
 
 ---
 
@@ -86,15 +86,16 @@ fixed order:
 2. **Turning**: facing rotates toward your `aim`.
 3. **Movement**, then walls and player–player collisions.
 4. **Attacks**: knife swings hit instantly, new bullets/grenades start at your centre, and a laser starts
-   charging.
-5. **Projectiles** move along their path (bullets, then grenades), hitting walls or players. Then
-   **lasers** whose charge ran out fire.
-6. **Mines** whose fuse ran out explode, then **explosions** deal damage.
+   charging. Then mines are planted and smoke/gas grenades thrown.
+5. **Projectiles** move along their path (bullets, then grenades, then thrown grenades, which turn
+   into clouds when they stop), hitting walls or players. Then **lasers** whose charge ran out fire.
+6. **Mines** whose fuse ran out explode, then **explosions** deal damage. Then **gas** clouds deal
+   their damage (on whole seconds of their life), and clouds age.
 7. **Zone damage** (on whole seconds) to players outside the safe zone.
 8. **Deaths**: lives are lost, gear is dropped, kills are credited.
 9. **Pickups**.
 10. **Respawns**, and gun pads refill.
-11. **Cooldowns** count down, and time spent in bushes is updated (see [§5.12](#512-bushes)).
+11. **Cooldowns** count down, and time spent in bushes is updated (see [§5.13](#513-bushes)).
 
 Consequences:
 - Your action always reacts to state that is one tick old.
@@ -165,7 +166,7 @@ Consequences:
 - **Attacking starts a charge.** The beam's direction is locked to your facing at that moment, and
   your facing stays locked until it fires. You can keep moving (top speed {{player.speedLaser}} u/s). After
   **{{laser.chargeTime}} s** the beam fires from wherever your centre is then. Starting a charge ends
-  invulnerability, and while charging you are revealed like after an attack (see §5.12).
+  invulnerability, and while charging you are revealed like after an attack (see §5.13).
 - **Everyone sees it coming.** `state.lasers` lists every charging laser with `charge` (seconds until it
   fires) and `path`: where the beam would go if it fired now, from the shooter's current centre. Your own
   and everyone's countdown is also `players[i].laserCharge`.
@@ -188,7 +189,26 @@ Consequences:
 - An explosion **immediately detonates every other mine in its radius** (chain reaction).
 - Mines don't block movement. They outlive their owner, and kills still go to the owner.
 
-### 5.8 Explosions
+### 5.8 Smoke and gas grenades
+- Picked up as `smoke` and `gas` items (+{{smoke.pickupAmount}} each; carry at most {{smoke.maxCarry}} smoke and {{gas.maxCarry}} gas grenades,
+  shown as `smokeGrenades` and `gasGrenades`).
+- Return `throw: 'smoke'` or `throw: 'gas'` to throw one, whatever weapon you hold (cooldown {{throwing.cooldown}} s,
+  `cooldowns.throw`). It leaves your centre along your **facing** and slides along the floor, slowing
+  down at {{throwing.deceleration}} u/s² until it stops. **Choose where with `throwDistance`** (u, default and maximum
+  {{throwing.maxDistance}}): it stops exactly that far away unless a wall is in the way. It bounces off walls
+  (keeping ×{{throwing.bounce}} of its speed) and slides past players. Throwing reveals you like an attack and ends
+  invulnerability.
+- Sliding grenades are listed in `state.thrown`. When one stops it becomes a **cloud** centred there
+  (`state.clouds`).
+- **Smoke** (radius {{smoke.radius}} u, lasts {{smoke.duration}} s) **works exactly like a bush** (§5.13): a player whose
+  centre is in it is hidden from players outside it, the same reveal rules apply, and time in smoke
+  counts toward the hiding limit.
+- **Gas** (radius {{gas.radius}} u, lasts {{gas.duration}} s): at each whole second of the cloud's life (see `nextDamageIn`),
+  every player whose centre is inside takes **{{gas.damagePerSecond}}** damage, **the thrower included**. Inside gas
+  your top speed is multiplied by (1 − {{gas.slow}}). Walls do not stop gas. Gas damage shows up in events
+  as `weapon: 'gas'`, and kills go to the thrower.
+
+### 5.9 Explosions
 - Walls block explosions: a player takes no damage if a wall is on the straight line
   from the blast centre to their centre.
 - **Your own explosions hurt you** (×{{explosions.selfDamageFactor}} damage). Dying to your own explosive is a suicide,
@@ -197,21 +217,22 @@ Consequences:
 - In `state.events`, explosion damage shows up as `weapon: 'explosion'`. `state.explosions` lists
   every blast from the previous tick.
 
-### 5.9 Weapon switching
+### 5.10 Weapon switching
 - Return `weapon: 'knife' | 'gun' | 'launcher' | 'laser'` to switch; you must own the weapon. The new weapon's
   speed applies at once, but you **cannot attack for {{player.switchTime}} s** (`cooldowns.switch`).
 - Requesting the weapon you already hold does nothing, so it is safe to send every tick.
 
-### 5.10 Death, respawn, kills
+### 5.11 Death, respawn, kills
 - At 0 hp you lose a life. Your gun (if it has ammo), your launcher (if it has grenades) and your
-  laser (if it has shots) drop where you died as items that keep their ammo. Carried mines drop as a `mines` item.
+  laser (if it has shots) drop where you died as items that keep their ammo. Carried smoke and gas
+  grenades drop as `smoke` and `gas` items. Carried mines drop as a `mines` item.
 - You respawn after {{respawn.delay}} s with full hp, {{player.startShield}} shield and only the knife. The spawn point is
   random among spawn points at least {{respawn.safeDistance}} u from every living enemy, or the farthest one if
   none qualifies. Once the safe zone shrinks, only spawn points inside it count; if none is left,
   you respawn at a free spot inside the zone, as far from enemies as possible.
 - A kill is credited to the last *other* player who damaged you in that life.
 
-### 5.11 Items
+### 5.12 Items
 Items are circles of radius {{items.radius}}. You pick one up when your centre is within
 **{{derived.pickupReach}} u** of it (player radius + item radius). If several players touch it, the closest one gets it.
 **Items you can't use stay on the ground**: full hp, full shield, max ammo, and so on.
@@ -226,14 +247,16 @@ Items are circles of radius {{items.radius}}. You pick one up when your centre i
 | `launcher` | launcher + its grenades | no launcher yet, or grenades < {{launcher.maxAmmo}} |
 | `laser` | laser + its shots | no laser yet, or shots < {{laser.maxAmmo}} |
 | `mines` | +{{mines.pickupAmount}} mines | mines < {{mines.maxCarry}} |
+| `smoke` | +{{smoke.pickupAmount}} smoke grenade | smoke grenades < {{smoke.maxCarry}} |
+| `gas` | +{{gas.pickupAmount}} gas grenade | gas grenades < {{gas.maxCarry}} |
 
 Random items appear every {{items.spawnInterval}} s, starting {{items.firstSpawnDelay}} s into the match, at random free spots
 (inside the safe zone once it shrinks). Spawning pauses while {{items.maxOnMap}} spawned items are on the map.
 Spawn weights: {{derived.itemWeights}}.
 
-### 5.12 Bushes
+### 5.13 Bushes
 - Bushes are rectangles in `info.map.bushes`. They block nothing: players, bullets, grenades and
-  explosions pass through them.
+  explosions pass through them. **Smoke clouds (§5.8) are bushes too** for everything below, while they last.
 - A player whose **centre** is inside a bush is **hidden** from an enemy, unless:
   - the enemy is within **{{bushes.revealDistance}} u** (centre to centre), or its centre is in the same bush, or
   - the hidden player **attacked or took damage in the last {{bushes.noiseRevealTime}} s**, or
@@ -250,7 +273,7 @@ Spawn weights: {{derived.itemWeights}}.
   shows where the shots come from.
 - You always see yourself.
 
-### 5.13 Safe zone
+### 5.14 Safe zone
 - The safe zone is a circle around the **map centre**, described every tick in `state.zone`.
   Its radius follows a fixed schedule:
   1. Until {{zone.shrinkStart}} s it covers the whole map.
@@ -261,7 +284,7 @@ Spawn weights: {{derived.itemWeights}}.
 - At every whole second of match time, each living player whose **centre** is outside the zone
   takes **{{zone.damagePerSecond}} damage**. Shield absorbs it first, and invulnerability blocks it.
 - Zone damage counts as noise, so it reveals a player hiding in a bush outside the zone
-  ([§5.12](#512-bushes)).
+  ([§5.13](#513-bushes)).
 - Dying to the zone gives nobody the kill. In `state.events` zone damage is a `hit` with
   `weapon: 'zone'` and `attackerId` equal to the damaged player's own id.
 - A point is inside if `(x - zone.x)² + (y - zone.y)² <= radius²`. The countdowns
@@ -298,12 +321,15 @@ return {
   attack: true,              // use the weapon in hand
   weapon: 'gun',             // switch weapon
   plantMine: false,          // plant a mine here
+  throw: 'smoke',            // throw a smoke or gas grenade along your facing
+  throwDistance: 200,        // …so that it stops 200 u away
 };
 ```
 
 - All fields are optional. `null`, `undefined` or `{}` means stand still, keep facing, and don't attack.
 - Every field must have the right type: `move` must be `{x, y}` with finite numbers, `aim`
-  a finite number, `attack`/`plantMine` booleans, and `weapon` one of the four names. **If any field
+  a finite number, `attack`/`plantMine` booleans, `weapon` one of the four names, `throw` `'smoke'` or
+  `'gas'`, and `throwDistance` a finite number. **If any field
   is malformed, the whole action is rejected** and counts as a failure (see §8).
 - Unknown extra fields are ignored. Speed, rate of fire and damage come only from the
   rules: out-of-range numbers are clamped, never trusted.

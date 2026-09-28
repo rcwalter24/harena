@@ -10,7 +10,8 @@ export interface SanitizeResult {
 }
 
 const WEAPONS: readonly Weapon[] = ['knife', 'gun', 'launcher', 'laser'];
-const KNOWN_KEYS = new Set(['move', 'aim', 'attack', 'weapon', 'plantMine']);
+const KNOWN_KEYS = new Set(['move', 'aim', 'attack', 'weapon', 'plantMine', 'throw', 'throwDistance']);
+const THROWS = ['smoke', 'gas'] as const;
 
 const quantize = (v: number, step: number) => Math.round(v / step) * step;
 
@@ -84,6 +85,18 @@ export function sanitizeAction(raw: unknown): SanitizeResult {
       if (typeof plantMine !== 'boolean') problems.push(`plantMine must be a boolean, got ${describe(plantMine)}`);
       else action.plantMine = plantMine;
     }
+
+    const throwKind = obj.throw;
+    if (throwKind !== undefined && throwKind !== null) {
+      if (!THROWS.includes(throwKind as 'smoke')) problems.push(`throw must be 'smoke' or 'gas', got ${describe(throwKind)}`);
+      else action.throwKind = throwKind as 'smoke' | 'gas';
+    }
+
+    const throwDistance = obj.throwDistance;
+    if (throwDistance !== undefined && throwDistance !== null) {
+      if (typeof throwDistance !== 'number' || !Number.isFinite(throwDistance)) problems.push(`throwDistance must be a finite number, got ${describe(throwDistance)}`);
+      else action.throwDistance = throwDistance;
+    }
   } catch (err) {
     // Only reachable for in-process objects with throwing getters; worker results are plain data.
     problems.push(`reading the action threw: ${String(err)}`);
@@ -114,6 +127,7 @@ export function normalizeAction(a: ActionInput): ActionInput {
     y /= len;
   }
   const aim = a.aim === null || !Number.isFinite(a.aim) ? null : normalizeAngle(quantize(normalizeAngle(a.aim), 1e-4));
+  const throwKind = a.throwKind === 'smoke' || a.throwKind === 'gas' ? a.throwKind : null;
   return {
     moveX: quantize(x, 1e-3) + 0,
     moveY: quantize(y, 1e-3) + 0,
@@ -121,5 +135,8 @@ export function normalizeAction(a: ActionInput): ActionInput {
     attack: a.attack === true,
     weapon: a.weapon === 'knife' || a.weapon === 'gun' || a.weapon === 'launcher' || a.weapon === 'laser' ? a.weapon : null,
     plantMine: a.plantMine === true,
+    throwKind,
+    // Only kept with a throw; clamped at 0 (the engine caps it at throwing.maxDistance) and quantized.
+    throwDistance: throwKind && a.throwDistance !== null && Number.isFinite(a.throwDistance) ? quantize(Math.max(0, a.throwDistance), 0.1) + 0 : null,
   };
 }

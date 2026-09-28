@@ -1,7 +1,6 @@
 import { secondsToTicks } from '../config.ts';
 import { direction } from '../dmath.ts';
-import type { Rect } from '../geometry.ts';
-import { segmentCircleHit } from '../geometry.ts';
+import { segmentCircleHit, segmentRectEntry, type SegmentEntry } from '../geometry.ts';
 import { solidRects, type GameState, type PlayerState } from '../types.ts';
 import { applyDamage } from './combat.ts';
 
@@ -14,43 +13,13 @@ import { applyDamage } from './combat.ts';
  */
 
 /** First wall a ray (x, y) + t·(dx, dy), t in (0, 1], enters, and which axis its face is normal to. */
-function firstWall(state: GameState, x: number, y: number, dx: number, dy: number): { t: number; axis: 'x' | 'y' } | null {
-  let best: { t: number; axis: 'x' | 'y' } | null = null;
+function firstWall(state: GameState, x: number, y: number, dx: number, dy: number): SegmentEntry | null {
+  let best: SegmentEntry | null = null;
   for (const r of solidRects(state.map)) {
-    const hit = rayEntry(x, y, dx, dy, r);
+    const hit = segmentRectEntry(x, y, dx, dy, r);
     if (hit && (!best || hit.t < best.t)) best = hit;
   }
   return best;
-}
-
-/** Slab test: where the segment enters `r` (ignoring a start inside it), and through which face. */
-function rayEntry(x: number, y: number, dx: number, dy: number, r: Rect): { t: number; axis: 'x' | 'y' } | null {
-  let tMin = -Infinity;
-  let tMax = Infinity;
-  let axis: 'x' | 'y' = 'x';
-  if (dx === 0) {
-    if (x <= r.x || x >= r.x + r.w) return null;
-  } else {
-    let t1 = (r.x - x) / dx;
-    let t2 = (r.x + r.w - x) / dx;
-    if (t1 > t2) [t1, t2] = [t2, t1];
-    tMin = t1;
-    tMax = t2;
-  }
-  if (dy === 0) {
-    if (y <= r.y || y >= r.y + r.h) return null;
-  } else {
-    let t1 = (r.y - y) / dy;
-    let t2 = (r.y + r.h - y) / dy;
-    if (t1 > t2) [t1, t2] = [t2, t1];
-    if (t1 > tMin) {
-      tMin = t1;
-      axis = 'y';
-    }
-    tMax = Math.min(tMax, t2);
-  }
-  if (tMin > tMax || tMin <= 1e-9 || tMin > 1) return null;
-  return { t: tMin, axis };
 }
 
 export interface LaserSegment {

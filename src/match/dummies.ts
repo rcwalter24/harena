@@ -54,7 +54,7 @@ export class DummyController implements Controller {
       case 'strafe': {
         // Walk up and down, flipping every 1.5 s, while facing the nearest enemy.
         const phase = Math.floor(state.tick / (state.config.tickRate * 1.5)) % 2;
-        return { moveX: 0, moveY: phase === 0 ? 1 : -1, aim, attack: false, weapon: null, plantMine: false };
+        return { moveX: 0, moveY: phase === 0 ? 1 : -1, aim, attack: false, weapon: null, plantMine: false, throwKind: null, throwDistance: null };
       }
 
       case 'brawler': {
@@ -67,6 +67,8 @@ export class DummyController implements Controller {
           attack: knifeCanHit(state as GameState, self, enemy),
           weapon: 'knife',
           plantMine: false,
+          throwKind: null,
+          throwDistance: null,
         };
       }
 
@@ -77,7 +79,7 @@ export class DummyController implements Controller {
           want.sort((a, b) => Math.hypot(a.x - self.x, a.y - self.y) - Math.hypot(b.x - self.x, b.y - self.y));
           if (want.length > 0) {
             const t = toward(self, want[0].x, want[0].y);
-            return { moveX: t.dx / (t.dist || 1), moveY: t.dy / (t.dist || 1), aim: t.angle, attack: false, weapon: null, plantMine: false };
+            return { moveX: t.dx / (t.dist || 1), moveY: t.dy / (t.dist || 1), aim: t.angle, attack: false, weapon: null, plantMine: false, throwKind: null, throwDistance: null };
           }
           return new DummyController('brawler').decide(state, playerId);
         }
@@ -94,6 +96,8 @@ export class DummyController implements Controller {
           attack: self.weapon === 'gun' && Math.abs(angleDelta(t.angle, self.facing)) < 0.1,
           weapon: 'gun',
           plantMine: false,
+          throwKind: null,
+          throwDistance: null,
         };
       }
     }

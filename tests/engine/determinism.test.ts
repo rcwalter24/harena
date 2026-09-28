@@ -28,6 +28,8 @@ function simulate(seed: string, inputSeed: string, ticks = 600): string[] {
       aim: input.range(-4, 4),
       attack: input.next() < 0.3,
       weapon: input.next() < 0.05 ? (input.next() < 0.5 ? 'gun' : 'knife') : null,
+      throwKind: null,
+      throwDistance: null,
       plantMine: false,
     }));
     events += step(state, actions).filter((e) => e.type === 'hit' || e.type === 'death').length;

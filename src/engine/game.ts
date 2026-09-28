@@ -3,6 +3,7 @@ import { deriveRng } from './rng.ts';
 import { applyAttacks, updateBullets } from './systems/combat.ts';
 import { dueMines, plantMines, resolveExplosions, updateGrenades } from './systems/explosives.ts';
 import { updateLasers } from './systems/laser.ts';
+import { startThrows, updateClouds, updateThrowables } from './systems/throwables.ts';
 import { handlePickups, refillGunPads, updateItemSpawner } from './systems/items.ts';
 import { handleDeaths, handleRespawns, placeAtSpawn } from './systems/lives.ts';
 import { applyMovement, applyTurning, applyWeaponSwitches } from './systems/movement.ts';
@@ -48,6 +49,8 @@ export function createGame(opts: GameOptions): GameState {
     bullets: [],
     grenades: [],
     mines: [],
+    throwables: [],
+    clouds: [],
     explosions: [],
     items: [],
     gunPads: map.gunSpawns.map((g) => ({ x: g.x, y: g.y, itemId: -1, refillTimer: 0 })),
@@ -83,6 +86,9 @@ export function createGame(opts: GameOptions): GameState {
       hasLaser: false,
       laserShots: 0,
       mines: 0,
+      smokes: 0,
+      gases: 0,
+      throwCooldown: 0,
       knifeCooldown: 0,
       gunCooldown: 0,
       launcherCooldown: 0,
@@ -119,6 +125,7 @@ function tickTimers(state: GameState): void {
       p.gunCooldown = dec(p.gunCooldown);
       p.launcherCooldown = dec(p.launcherCooldown);
       p.laserCooldown = dec(p.laserCooldown);
+      p.throwCooldown = dec(p.throwCooldown);
       p.mineCooldown = dec(p.mineCooldown);
       p.switchTimer = dec(p.switchTimer);
       p.invulnerableTimer = dec(p.invulnerableTimer);
@@ -139,9 +146,10 @@ function tickTimers(state: GameState): void {
  * input (missing entries count as idle). Mutates `state` and returns the events
  * produced during this tick (also stored in state.events).
  *
- * Order: weapon switches → turning → movement & collisions → attacks (laser charges start)
- * & mine planting → bullets → grenades → lasers (charges count down; finished ones fire) →
- * due mines → explosions (with chain reactions) →
+ * Order: weapon switches → turning → movement & collisions → attacks (laser charges start),
+ * mine planting & throws → bullets → grenades → thrown grenades slide (stopped ones become
+ * clouds) → lasers (charges count down; finished ones fire) → due mines → explosions (with
+ * chain reactions) → gas damage & cloud ageing →
  * zone damage → deaths → pickups → respawns, gun pads & item spawns → timers & bush
  * hiding time → match end.
  */
@@ -156,11 +164,14 @@ export function step(state: GameState, actions: readonly (ActionInput | undefine
   applyMovement(state, acts);
   applyAttacks(state, acts);
   plantMines(state, acts);
+  startThrows(state, acts);
   updateBullets(state);
   const blasts = updateGrenades(state);
+  updateThrowables(state);
   updateLasers(state);
   blasts.push(...dueMines(state));
   resolveExplosions(state, blasts);
+  updateClouds(state);
   applyZoneDamage(state);
   handleDeaths(state);
   handlePickups(state);

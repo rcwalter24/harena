@@ -5,7 +5,9 @@ import type { Rng } from './rng.ts';
 export type Weapon = 'knife' | 'gun' | 'launcher' | 'laser';
 
 /** What dealt damage: a weapon, or a mine. */
-export type DamageSource = Weapon | 'mine' | 'zone';
+export type DamageSource = Weapon | 'mine' | 'zone' | 'gas';
+
+export type ThrowKind = 'smoke' | 'gas';
 
 export interface SpawnPoint {
   x: number;
@@ -49,6 +51,10 @@ export interface ActionInput {
   /** Requested weapon, or null for no change. */
   weapon: Weapon | null;
   plantMine: boolean;
+  /** Throw a smoke or gas grenade this tick, or null. */
+  throwKind: ThrowKind | null;
+  /** How far it should slide, or null for the maximum. */
+  throwDistance: number | null;
 }
 
 export const IDLE_ACTION: Readonly<ActionInput> = Object.freeze({
@@ -58,6 +64,8 @@ export const IDLE_ACTION: Readonly<ActionInput> = Object.freeze({
   attack: false,
   weapon: null,
   plantMine: false,
+  throwKind: null,
+  throwDistance: null,
 });
 
 export interface PlayerStats {
@@ -106,6 +114,9 @@ export interface PlayerState {
   hasLaser: boolean;
   laserShots: number;
   mines: number;
+  smokes: number;
+  gases: number;
+  throwCooldown: number;
   /** Remaining ticks for each timer; 0 = ready / inactive. */
   knifeCooldown: number;
   gunCooldown: number;
@@ -162,6 +173,32 @@ export interface Mine {
   fuseTimer: number;
 }
 
+/** A smoke or gas grenade sliding to a stop. */
+export interface Throwable {
+  id: number;
+  ownerId: number;
+  kind: ThrowKind;
+  x: number;
+  y: number;
+  /** Velocity, u/s; it decreases by throwing.deceleration every second. */
+  vx: number;
+  vy: number;
+}
+
+/** A smoke or gas cloud left by a grenade that stopped. */
+export interface Cloud {
+  id: number;
+  ownerId: number;
+  kind: ThrowKind;
+  x: number;
+  y: number;
+  radius: number;
+  /** Ticks since it appeared. */
+  age: number;
+  /** Ticks until it disappears. */
+  ticksLeft: number;
+}
+
 export interface Explosion {
   ownerId: number;
   source: 'grenade' | 'mine';
@@ -200,6 +237,8 @@ export type GameEvent =
   | { type: 'hit'; tick: number; attackerId: number; targetId: number; weapon: DamageSource; damage: number; shieldDamage: number; hpDamage: number }
   | { type: 'grenade'; tick: number; playerId: number; grenadeId: number }
   | { type: 'laserCharge'; tick: number; playerId: number; aim: number }
+  | { type: 'throw'; tick: number; playerId: number; throwableId: number; kind: ThrowKind }
+  | { type: 'cloud'; tick: number; cloudId: number; ownerId: number; kind: ThrowKind; x: number; y: number; radius: number }
   /** A laser fired: `path` is x0, y0, x1, y1, … (start, bounce points, end); hitId is the player it stopped at, or -1. */
   | { type: 'laser'; tick: number; playerId: number; path: number[]; hitId: number }
   | { type: 'minePlanted'; tick: number; playerId: number; mineId: number; x: number; y: number }
@@ -249,6 +288,8 @@ export interface GameState {
   bullets: Bullet[];
   grenades: Grenade[];
   mines: Mine[];
+  throwables: Throwable[];
+  clouds: Cloud[];
   /** Explosions that happened during the most recent step(). */
   explosions: Explosion[];
   items: Item[];

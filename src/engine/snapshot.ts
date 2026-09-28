@@ -32,12 +32,15 @@ export function playerView(state: GameState, p: PlayerState): PlayerView {
     ammo: { gun: p.ammo, launcher: p.grenades, laser: p.laserShots },
     laserCharge: p.alive ? t(p.laserCharge) : 0,
     mines: p.mines,
+    smokeGrenades: p.smokes,
+    gasGrenades: p.gases,
     cooldowns: {
       knife: t(p.knifeCooldown),
       gun: t(p.gunCooldown),
       launcher: t(p.launcherCooldown),
       laser: t(p.laserCooldown),
       mine: t(p.mineCooldown),
+      throw: t(p.throwCooldown),
       switch: t(p.switchTimer),
     },
   };
@@ -56,7 +59,7 @@ function eventViews(state: GameState): EventView[] {
       case 'shot': out.push({ type: 'shot', playerId: e.playerId }); break;
       case 'swing': out.push({ type: 'swing', playerId: e.playerId, hitIds: [...e.hitIds] }); break;
       case 'hit': {
-        const weapon = e.weapon === 'knife' || e.weapon === 'gun' || e.weapon === 'laser' || e.weapon === 'zone' ? e.weapon : 'explosion';
+        const weapon = e.weapon === 'knife' || e.weapon === 'gun' || e.weapon === 'laser' || e.weapon === 'zone' || e.weapon === 'gas' ? e.weapon : 'explosion';
         out.push({ type: 'hit', attackerId: e.attackerId, targetId: e.targetId, weapon, damage: e.damage });
         break;
       }
@@ -95,6 +98,12 @@ export function buildBotState(state: GameState): Omit<BotState, 'self'> {
       charge: p.laserCharge / config.tickRate,
       angle: p.laserAim,
       path: toPoints(segmentPoints(laserSegments(state, p.x, p.y, p.laserAim))),
+    })),
+    thrown: state.throwables.map((g) => ({ id: g.id, ownerId: g.ownerId, kind: g.kind, x: g.x, y: g.y, vx: g.vx, vy: g.vy })),
+    clouds: state.clouds.map((c) => ({
+      id: c.id, ownerId: c.ownerId, kind: c.kind, x: c.x, y: c.y, radius: c.radius,
+      timeLeft: c.ticksLeft / config.tickRate,
+      nextDamageIn: c.kind === 'gas' ? (config.tickRate - (c.age % config.tickRate)) / config.tickRate : null,
     })),
     explosions: state.explosions.map((e) => ({ ownerId: e.ownerId, source: e.source, x: e.x, y: e.y, radius: e.radius })),
     items: state.items.map((it) => ({ id: it.id, type: it.type, x: it.x, y: it.y })),

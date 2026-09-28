@@ -18,6 +18,9 @@ export function applyCheat(state: GameState, playerId: number, kind: CheatKind):
       p.laserShots = laser.maxAmmo;
     }
     p.mines = mines.maxCarry;
+    // Zero for replays from before smoke and gas existed.
+    p.smokes = state.config.smoke.maxCarry;
+    p.gases = state.config.gas.maxCarry;
   } else {
     p.hp = player.maxHp;
     p.shield = player.maxShield;

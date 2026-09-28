@@ -6,11 +6,11 @@
  * angles in degrees where noted (the engine converts to radians / ticks).
  */
 
-export type ItemType = 'ammo' | 'shield' | 'health' | 'gun' | 'life' | 'launcher' | 'mines' | 'laser';
+export type ItemType = 'ammo' | 'shield' | 'health' | 'gun' | 'life' | 'launcher' | 'mines' | 'laser' | 'smoke' | 'gas';
 
 // New types go last: the weighted item roll walks this list, so a type with weight 0 at the end
 // leaves older replays' rolls unchanged.
-export const ITEM_TYPES: readonly ItemType[] = ['ammo', 'shield', 'health', 'gun', 'life', 'launcher', 'mines', 'laser'];
+export const ITEM_TYPES: readonly ItemType[] = ['ammo', 'shield', 'health', 'gun', 'life', 'launcher', 'mines', 'laser', 'smoke', 'gas'];
 
 export interface GameConfig {
   tickRate: number;
@@ -76,6 +76,27 @@ export interface GameConfig {
   };
   explosions: {
     selfDamageFactor: number;
+  };
+  throwing: {
+    maxDistance: number;
+    deceleration: number;
+    radius: number;
+    bounce: number;
+    cooldown: number;
+  };
+  smoke: {
+    pickupAmount: number;
+    maxCarry: number;
+    radius: number;
+    duration: number;
+  };
+  gas: {
+    pickupAmount: number;
+    maxCarry: number;
+    radius: number;
+    duration: number;
+    damagePerSecond: number;
+    slow: number;
   };
   bushes: {
     revealDistance: number;
@@ -188,6 +209,27 @@ export const DEFAULT_CONFIG: GameConfig = {
   explosions: {
     selfDamageFactor: 1,
   },
+  throwing: {
+    maxDistance: 350,
+    deceleration: 900,
+    radius: 6,
+    bounce: 0.5,
+    cooldown: 0.5,
+  },
+  smoke: {
+    pickupAmount: 1,
+    maxCarry: 2,
+    radius: 110,
+    duration: 8,
+  },
+  gas: {
+    pickupAmount: 1,
+    maxCarry: 2,
+    radius: 100,
+    duration: 6,
+    damagePerSecond: 12,
+    slow: 0.4,
+  },
   bushes: {
     revealDistance: 90,
     noiseRevealTime: 1,
@@ -217,7 +259,7 @@ export const DEFAULT_CONFIG: GameConfig = {
     shieldAmount: 50,
     healthAmount: 40,
     lifeAmount: 1,
-    weights: { ammo: 26, shield: 18, health: 18, gun: 10, life: 7, launcher: 10, mines: 15, laser: 12 },
+    weights: { ammo: 26, shield: 18, health: 18, gun: 10, life: 7, launcher: 10, mines: 15, laser: 12, smoke: 8, gas: 8 },
   },
   match: {
     defaultTimeLimit: 180,
@@ -291,6 +333,21 @@ export const CONFIG_DOCS: Record<string, ConfigDoc> = {
   'mines.centerDamage': { unit: 'hp', description: 'Mine damage at the centre of the explosion.' },
   'mines.edgeDamage': { unit: 'hp', description: 'Mine damage at the edge of the blast radius (linear falloff in between).' },
   'explosions.selfDamageFactor': { unit: 'x', description: 'Multiplier for damage you take from your own explosions (1 = full damage).' },
+  'throwing.maxDistance': { unit: 'u', description: 'Farthest a smoke or gas grenade slides before stopping (you choose any distance up to this).' },
+  'throwing.deceleration': { unit: 'u/s²', description: 'A thrown grenade slows down at this constant rate until it stops.' },
+  'throwing.radius': { unit: 'u', description: 'Collision radius of a thrown grenade (it bounces off walls; players do not stop it).' },
+  'throwing.bounce': { unit: 'x', description: 'Speed kept when a thrown grenade bounces off a wall.' },
+  'throwing.cooldown': { unit: 's', description: 'Minimum time between two throws.' },
+  'smoke.pickupAmount': { unit: 'grenades', description: 'Smoke grenades gained from a smoke item.' },
+  'smoke.maxCarry': { unit: 'grenades', description: 'Maximum smoke grenades carried.' },
+  'smoke.radius': { unit: 'u', description: 'Radius of the smoke cloud (it works like a bush).' },
+  'smoke.duration': { unit: 's', description: 'How long the smoke cloud lasts.' },
+  'gas.pickupAmount': { unit: 'grenades', description: 'Gas grenades gained from a gas item.' },
+  'gas.maxCarry': { unit: 'grenades', description: 'Maximum gas grenades carried.' },
+  'gas.radius': { unit: 'u', description: 'Radius of the gas cloud.' },
+  'gas.duration': { unit: 's', description: 'How long the gas cloud lasts.' },
+  'gas.damagePerSecond': { unit: 'hp', description: "Damage at every whole second of the cloud's life to each player whose centre is inside it (the thrower too)." },
+  'gas.slow': { unit: 'x', description: 'Speed reduction inside gas: top speed is multiplied by (1 − slow).' },
   'bushes.revealDistance': { unit: 'u', description: 'An enemy in a bush is visible to you if the centres are at most this far apart.' },
   'bushes.noiseRevealTime': { unit: 's', description: 'A player in a bush stays visible this long after attacking or taking damage.' },
   'bushes.hideLimit': { unit: 's', description: 'After this long in bushes without a break you are exposed: visible to everyone while in a bush (0 = no limit).' },
@@ -321,6 +378,8 @@ export const CONFIG_DOCS: Record<string, ConfigDoc> = {
   'items.weights.launcher': { unit: 'weight', description: 'Relative spawn weight of grenade launcher items.' },
   'items.weights.mines': { unit: 'weight', description: 'Relative spawn weight of mines items.' },
   'items.weights.laser': { unit: 'weight', description: 'Relative spawn weight of laser items.' },
+  'items.weights.smoke': { unit: 'weight', description: 'Relative spawn weight of smoke grenade items.' },
+  'items.weights.gas': { unit: 'weight', description: 'Relative spawn weight of gas grenade items.' },
   'match.defaultTimeLimit': { unit: 's', description: 'Default match length (the match setup may change it).' },
   'match.minPlayers': { unit: 'players', description: 'Minimum players in a match.' },
   'match.maxPlayers': { unit: 'players', description: 'Maximum players in a match.' },

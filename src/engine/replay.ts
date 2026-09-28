@@ -23,8 +23,12 @@ export interface ReplayPlayerInfo {
   sourceHash?: string;
 }
 
-/** A run of identical actions: [count, moveX, moveY, aim | null, flags (1 = attack, 2 = plantMine), weapon (0 none, 1 knife, 2 gun, 3 launcher)]. */
-export type ActionRun = [number, number, number, number | null, number, number];
+/**
+ * A run of identical actions: [count, moveX, moveY, aim | null, flags, weapon, throwDistance?].
+ * flags: 1 = attack, 2 = plantMine, 4 = throw smoke, 8 = throw gas. weapon: 0 none, 1 knife,
+ * 2 gun, 3 launcher, 4 laser. throwDistance is only present for a throw with a chosen distance.
+ */
+export type ActionRun = [number, number, number, number | null, number, number] | [number, number, number, number | null, number, number, number];
 
 export interface ReplayCheat {
   /** Applied just before this tick is simulated. */
@@ -53,13 +57,15 @@ export interface Replay {
   extras?: unknown[];
 }
 
-const WEAPON_CODES: Array<Weapon | null> = [null, 'knife', 'gun', 'launcher'];
+const WEAPON_CODES: Array<Weapon | null> = [null, 'knife', 'gun', 'launcher', 'laser'];
 
 /** An action without its run count. */
-type EncodedAction = [number, number, number | null, number, number];
+type EncodedAction = [number, number, number | null, number, number] | [number, number, number | null, number, number, number];
 
 function encode(a: ActionInput): EncodedAction {
-  return [a.moveX, a.moveY, a.aim, (a.attack ? 1 : 0) | (a.plantMine ? 2 : 0), WEAPON_CODES.indexOf(a.weapon)];
+  const flags = (a.attack ? 1 : 0) | (a.plantMine ? 2 : 0) | (a.throwKind === 'smoke' ? 4 : 0) | (a.throwKind === 'gas' ? 8 : 0);
+  const base: [number, number, number | null, number, number] = [a.moveX, a.moveY, a.aim, flags, WEAPON_CODES.indexOf(a.weapon)];
+  return a.throwKind && a.throwDistance !== null ? [...base, a.throwDistance] : base;
 }
 
 function decode(run: ActionRun): ActionInput {
@@ -70,11 +76,13 @@ function decode(run: ActionRun): ActionInput {
     attack: (run[4] & 1) !== 0,
     plantMine: (run[4] & 2) !== 0,
     weapon: WEAPON_CODES[run[5]] ?? null,
+    throwKind: (run[4] & 4) !== 0 ? 'smoke' : (run[4] & 8) !== 0 ? 'gas' : null,
+    throwDistance: run[6] ?? null,
   };
 }
 
 function sameRun(run: ActionRun, enc: EncodedAction): boolean {
-  return run[1] === enc[0] && run[2] === enc[1] && run[3] === enc[2] && run[4] === enc[3] && run[5] === enc[4];
+  return run[1] === enc[0] && run[2] === enc[1] && run[3] === enc[2] && run[4] === enc[3] && run[5] === enc[4] && (run[6] ?? null) === (enc[5] ?? null);
 }
 
 export interface ReplaySetup {
@@ -163,6 +171,16 @@ export function validateReplay(raw: unknown): Replay {
   let config = r.config!.zone ? r.config! : { ...r.config!, zone: { ...DEFAULT_CONFIG.zone, damagePerSecond: 0 } };
   if (config.player.accelTime === undefined) config = { ...config, player: { ...config.player, accelTime: 0 } };
   if (config.bushes.hideLimit === undefined) config = { ...config, bushes: { ...config.bushes, hideLimit: 0, rehideTime: 0 } };
+  // Before smoke and gas grenades: none spawn and none can be carried.
+  if (config.throwing === undefined) {
+    config = {
+      ...config,
+      throwing: DEFAULT_CONFIG.throwing,
+      smoke: { ...DEFAULT_CONFIG.smoke, maxCarry: 0 },
+      gas: { ...DEFAULT_CONFIG.gas, maxCarry: 0 },
+      items: { ...config.items, weights: { ...config.items.weights, smoke: 0, gas: 0 } },
+    };
+  }
   // Before the laser: none spawn (weight 0, the last type in the item roll) and none can be held.
   if (config.laser === undefined) {
     config = {
