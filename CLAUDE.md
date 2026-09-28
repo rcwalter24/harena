@@ -50,7 +50,9 @@ git history; this file lists the rules that must keep holding.
 - **Test kit** (`src/sim/cli.ts` → `dist/harena-sim.mjs` via `vite.sim.config.ts`): one Node file
   with the engine, maps, built-in bots and the real worker sandbox (it starts itself as the bot
   worker). It must play exactly the games `npm run batch` plays (`tests/sim.test.ts`), so it
-  reuses the file-system-free game loop in `src/batch/games.ts`.
+  reuses the file-system-free game loop in `src/batch/games.ts`. Headless games run flat out but
+  slow to real time while a bot is restarting or stuck (`BotController.lagging`), so a hiccup costs
+  the ticks it would in a live match, not the rest of the game.
 
 ## Conventions
 

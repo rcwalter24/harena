@@ -423,6 +423,7 @@ Your bot receives the map in `info.map` and should work on any of them.
   and sandbox in one file, with the three example bots (`random`, `chaser`, `gunner`) as opponents. For example
   `node harena-sim.mjs mybot.js --vs gunner,chaser --games 20` prints win rates, accuracy and any
   errors or timeouts; `--trace trace.json` records one game tick by tick; `--help` lists the rest.
+  On a machine with few CPU cores add `--concurrency 1`, so bots aren't slowed down by each other.
   It's a convenience, not a requirement — a bot written from this document alone is fine.
 
 Useful helpers:

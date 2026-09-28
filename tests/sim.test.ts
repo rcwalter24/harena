@@ -35,6 +35,17 @@ describe('test kit (dist/harena-sim.mjs)', () => {
     }
   });
 
+  it('a stuck bot loses about real time, not the rest of the match (as in a live game)', () => {
+    // hang.js loops forever from its second tick: 1 s of silence → restart → again → disabled.
+    const out = JSON.parse(kit('tests/fixtures/bots/hang.js', '--games', '1', '--seed', 'h', '--time-limit', '30', '--json'));
+    const problems: string[] = out.logs.hang.problems;
+    const skipped = Number(/tick skipped \(×(\d+)\)/.exec(problems.join('\n'))?.[1] ?? 0);
+    expect(skipped).toBeGreaterThan(20); // it did miss ticks while stuck…
+    expect(skipped).toBeLessThan(150); // …about 2 s worth, not the whole 900-tick match
+    expect(problems.join('\n')).toMatch(/restarted/);
+    expect(problems.join('\n')).toMatch(/disabled/);
+  }, 60_000);
+
   it('refuses a bot the static check would block, with the reasons', () => {
     let message = '';
     try {

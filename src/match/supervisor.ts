@@ -272,6 +272,15 @@ export class BotController implements Controller {
     return { ...this.lastAction, plantMine: false };
   }
 
+  /**
+   * The bot can't answer this tick right away: its worker is (re)starting or still busy with an
+   * earlier decide(). A live match moves on in real time meanwhile, so headless runs slow down to
+   * real time while this is true (instead of racing through the ticks it misses).
+   */
+  get lagging(): boolean {
+    return this.status === 'starting' || this.pending !== null;
+  }
+
   decide(state: Readonly<GameState>, playerId: number): ActionInput | Promise<ActionInput> {
     this.state = state as GameState;
     this.playerId = playerId;

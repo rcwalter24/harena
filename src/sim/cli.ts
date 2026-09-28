@@ -47,6 +47,8 @@ Options:
   --seed <s>           Base seed (default: random). Same seed + same bots = same games.
   --time-limit <sec>   Match length (default ${DEFAULT_CONFIG.match.defaultTimeLimit}).
   --no-zone            Turn the shrinking safe zone off.
+  --concurrency <n>    Games played at the same time (default: CPU cores / bots). Use 1 on a
+                       machine with few cores, so bots don't miss their time budget.
   --budget <ms>        decide() time budget (default ${DEFAULT_CONFIG.sandbox.decideBudgetMs}; raise it on a slow machine).
   --trace <file>       Write a tick-by-tick JSON trace of game 0 (positions, hp, events).
   --replays <dir>      Save each game as a replay .json (open it on the Harena page: Load replay…).
@@ -136,6 +138,7 @@ async function main(): Promise<void> {
         seed: { type: 'string' },
         'time-limit': { type: 'string' },
         budget: { type: 'string' },
+        concurrency: { type: 'string' },
         'no-zone': { type: 'boolean', default: false },
         trace: { type: 'string' },
         replays: { type: 'string' },
@@ -198,7 +201,7 @@ async function main(): Promise<void> {
     games,
     seed,
     timeLimit,
-    concurrency: Math.max(1, Math.min(8, Math.floor((os.availableParallelism?.() ?? os.cpus().length) / bots.length))),
+    concurrency: positiveInt('concurrency', args.concurrency, Math.max(1, Math.min(8, Math.floor((os.availableParallelism?.() ?? os.cpus().length) / bots.length)))),
     config,
     createWorker: () => createNodeWorker(self, { role: WORKER_ROLE }),
     keepLogs: true,

@@ -112,9 +112,15 @@ async function playGame(index: number, opts: GamesOptions): Promise<GameResult> 
   runner.recorder = recorder;
   opts.observe?.(index, runner);
   const started = performance.now();
+  const realTimeTick = 1000 / config.tickRate;
   try {
     await runner.init();
-    while (!state.over) await runner.tick();
+    while (!state.over) {
+      // Like a live match: a bot that is restarting or stuck misses ticks at real-time pace, so a
+      // one-second restart costs ~30 ticks rather than whatever the engine could run in that second.
+      if (controllers.some((c) => c.lagging)) await new Promise((resolve) => setTimeout(resolve, realTimeTick));
+      await runner.tick();
+    }
   } finally {
     runner.dispose();
   }
