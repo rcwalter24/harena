@@ -1,6 +1,7 @@
 import type { GameState, PlayerState } from '../engine/types.ts';
 import type { BotStats } from '../match/supervisor.ts';
 import { playerColor } from '../render/renderer.ts';
+import { t } from './i18n.ts';
 
 export function escapeHtml(text: string): string {
   return text.replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]!);
@@ -29,19 +30,21 @@ function botHealth(stats: BotStats | null): string {
   if (!stats) return '<span class="muted">–</span>';
   const problems = stats.timeouts + stats.errors + stats.invalid;
   const avg = stats.decisions > 0 ? stats.totalDecideMs / stats.decisions : 0;
-  const detail = `timeouts ${stats.timeouts}, errors ${stats.errors}, invalid ${stats.invalid}, restarts ${stats.restarts}, max ${stats.maxDecideMs.toFixed(2)} ms`;
-  const label = problems === 0 && stats.restarts === 0 ? `✓ ${avg.toFixed(2)} ms` : `⚠ ${problems} fail${problems === 1 ? '' : 's'}`;
+  const detail = t('timeouts {t}, errors {e}, invalid {i}, restarts {r}, max {max} ms', {
+    t: stats.timeouts, e: stats.errors, i: stats.invalid, r: stats.restarts, max: stats.maxDecideMs.toFixed(2),
+  });
+  const label = problems === 0 && stats.restarts === 0 ? `✓ ${avg.toFixed(2)} ms` : t(problems === 1 ? '⚠ {n} fail' : '⚠ {n} fails', { n: problems });
   return `<span class="${problems ? 'warn-text' : 'muted'}" title="${detail}">${label}</span>`;
 }
 
 function itemsCell(p: PlayerState): string {
-  const detail = Object.entries(p.stats.itemsByType).filter(([, n]) => n > 0).map(([t, n]) => `${t} ${n}`).join(', ');
-  return `<span title="${detail || 'none'}">${p.stats.itemsPicked}</span>`;
+  const detail = Object.entries(p.stats.itemsByType).filter(([, n]) => n > 0).map(([type, n]) => `${type} ${n}`).join(', ');
+  return `<span title="${detail || t('none')}">${p.stats.itemsPicked}</span>`;
 }
 
 function outcome(state: GameState, p: PlayerState): string {
   if (!p.eliminated) return `${p.lives} ♥ · ${Math.ceil(p.hp + p.shield)}`;
-  return `out at ${(p.eliminatedTick / state.config.tickRate).toFixed(0)}s`;
+  return t('out at {s}s', { s: (p.eliminatedTick / state.config.tickRate).toFixed(0) });
 }
 
 /** Full-screen results overlay with ranking, per-player stats and follow-up actions. */
@@ -49,8 +52,8 @@ export function showResults(host: HTMLElement, data: ResultsData, actions: Resul
   const { state } = data;
   const result = state.result!;
   const winners = result.ranking.filter((r) => r.rank === 1).map((r) => state.players[r.playerId].name);
-  const reason = result.reason === 'timeLimit' ? 'Time limit reached' : result.reason === 'allEliminated' ? 'Everyone is out' : 'Last one standing';
-  const headline = winners.length === 1 ? `🏆 ${escapeHtml(winners[0])} wins` : `Draw: ${winners.map(escapeHtml).join(', ')}`;
+  const reason = t(result.reason === 'timeLimit' ? 'Time limit reached' : result.reason === 'allEliminated' ? 'Everyone is out' : 'Last one standing');
+  const headline = winners.length === 1 ? t('🏆 {name} wins', { name: escapeHtml(winners[0]) }) : t('Draw: {names}', { names: winners.map(escapeHtml).join(', ') });
 
   const rows = result.ranking.map(({ playerId, rank }) => {
     const p = state.players[playerId];
@@ -63,9 +66,9 @@ export function showResults(host: HTMLElement, data: ResultsData, actions: Resul
       <td class="num">${s.deaths}</td>
       <td class="num">${Math.round(s.damageDealt)}</td>
       <td class="num">${Math.round(s.damageTaken)}</td>
-      <td class="num" title="${s.shotsHit} / ${s.shotsFired} bullets">${pct(s.shotsHit, s.shotsFired)}</td>
-      <td class="num" title="swings that hit / swings">${s.knifeHits}/${s.knifeSwings}</td>
-      <td class="num" title="grenades that hurt an enemy / fired">${s.grenadeHits}/${s.grenadesFired}</td>
+      <td class="num" title="${t('{hit} / {fired} bullets', { hit: s.shotsHit, fired: s.shotsFired })}">${pct(s.shotsHit, s.shotsFired)}</td>
+      <td class="num" title="${t('swings that hit / swings')}">${s.knifeHits}/${s.knifeSwings}</td>
+      <td class="num" title="${t('grenades that hurt an enemy / fired')}">${s.grenadeHits}/${s.grenadesFired}</td>
       <td class="num">${s.minesPlanted}</td>
       <td class="num">${itemsCell(p)}</td>
       <td>${botHealth(data.botStats[p.id])}</td>
@@ -76,28 +79,28 @@ export function showResults(host: HTMLElement, data: ResultsData, actions: Resul
     <div class="results-card">
       <div class="results-head">
         <div>
-          <div class="banner-sub">${reason} · ${(result.endTick / state.config.tickRate).toFixed(1)}s · seed ${escapeHtml(state.seed)}</div>
+          <div class="banner-sub">${reason} · ${t('{s}s', { s: (result.endTick / state.config.tickRate).toFixed(1) })} · ${t('seed {seed}', { seed: escapeHtml(state.seed) })}</div>
           <h2>${headline}</h2>
         </div>
-        <button class="close" title="Hide (look at the final state)">×</button>
+        <button class="close" title="${t('Hide (look at the final state)')}">×</button>
       </div>
       <div class="results-table-wrap">
         <table class="results-table">
           <thead><tr>
-            <th>#</th><th>Player</th><th>Result</th><th title="kills">K</th><th title="deaths">D</th>
-            <th title="damage dealt">Dealt</th><th title="damage taken">Taken</th><th title="gun accuracy">Gun acc.</th>
-            <th>Knife</th><th>Grenades</th><th>Mines</th><th>Items</th><th title="bot sandbox: average decide() time or failures">Bot</th>
+            <th>#</th><th>${t('Player')}</th><th>${t('Result')}</th><th title="${t('kills')}">${t('K')}</th><th title="${t('deaths')}">${t('D')}</th>
+            <th title="${t('damage dealt')}">${t('Dealt')}</th><th title="${t('damage taken')}">${t('Taken')}</th><th title="${t('gun accuracy')}">${t('Gun acc.')}</th>
+            <th>${t('Knife')}</th><th>${t('Grenades')}</th><th>${t('Mines')}</th><th>${t('Items')}</th><th title="${t('bot sandbox: average decide() time or failures')}">${t('Bot')}</th>
           </tr></thead>
           <tbody>${rows}</tbody>
         </table>
       </div>
       <div class="results-actions">
-        ${actions.watchReplay ? '<button data-act="watchReplay">▶ Watch replay</button>' : ''}
-        ${actions.download ? '<button data-act="download">⬇ Download replay</button>' : ''}
-        ${actions.exportVideo ? '<button data-act="exportVideo">🎬 Export video</button>' : ''}
-        ${actions.rematch ? '<button data-act="rematch">Rematch (same seed)</button>' : ''}
-        ${actions.newSeed ? '<button data-act="newSeed">Rematch (new seed)</button>' : ''}
-        <button data-act="setup" class="primary">Back to setup</button>
+        ${actions.watchReplay ? `<button data-act="watchReplay">${t('▶ Watch replay')}</button>` : ''}
+        ${actions.download ? `<button data-act="download">${t('⬇ Download replay')}</button>` : ''}
+        ${actions.exportVideo ? `<button data-act="exportVideo">${t('🎬 Export video')}</button>` : ''}
+        ${actions.rematch ? `<button data-act="rematch">${t('Rematch (same seed)')}</button>` : ''}
+        ${actions.newSeed ? `<button data-act="newSeed">${t('Rematch (new seed)')}</button>` : ''}
+        <button data-act="setup" class="primary">${t('Back to setup')}</button>
       </div>
     </div>`;
   host.classList.remove('hidden');

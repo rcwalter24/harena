@@ -3,6 +3,7 @@ import type { BotStats } from '../match/supervisor.ts';
 import { playerColor } from '../render/renderer.ts';
 import { ArenaShell } from './arenaShell.ts';
 import { zoneStatus } from './hud.ts';
+import { locale, t } from './i18n.ts';
 import { openVideoExport } from './videoDialog.ts';
 import { replayFileName } from './matchView.ts';
 import { downloadJson, escapeHtml, showResults } from './results.ts';
@@ -22,7 +23,7 @@ export function mountReplay(app: HTMLElement, replay: Replay, callbacks: { onExi
   const tickRate = replay.config.tickRate;
   const total = replay.ticks;
   const botStats = (replay.extras ?? []).map((x) => (x && typeof x === 'object' ? (x as BotStats) : null));
-  const sources = replay.players.map((p) => (p.kind === 'bot' ? p.source ?? 'bot' : p.kind === 'human' ? 'keyboard' : `dummy: ${p.source ?? ''}`));
+  const sources = replay.players.map((p) => (p.kind === 'bot' ? p.source ?? 'bot' : p.kind === 'human' ? t('keyboard') : t('dummy: {kind}', { kind: t(p.source ?? '') })));
   let seeking = false;
 
   const ticker = {
@@ -33,22 +34,26 @@ export function mountReplay(app: HTMLElement, replay: Replay, callbacks: { onExi
   };
 
   const shell = new ArenaShell(app, {
-    badge: 'REPLAY',
-    meta: `${escapeHtml(replay.map.name)} · seed ${escapeHtml(replay.seed)} · recorded ${new Date(replay.createdAt).toLocaleString()}`,
-    restartLabel: 'Restart',
+    badge: t('REPLAY'),
+    meta: [
+      escapeHtml(t(replay.map.name)),
+      t('seed {seed}', { seed: escapeHtml(replay.seed) }),
+      t('recorded {date}', { date: new Date(replay.createdAt).toLocaleString(locale()) }),
+    ].join(' · '),
+    restartLabel: t('Restart'),
     extraControls: `
       <div class="row seek-row">
         <input type="range" id="seek" min="0" max="${total}" value="0" step="1" />
         <span id="seek-time" class="speed">0:00 / ${formatTime(total, tickRate)}</span>
       </div>
-      <div class="row"><button id="export-video" title="Render this replay to a video file">🎬 Export video</button></div>`,
+      <div class="row"><button id="export-video" title="${t('Render this replay to a video file')}">${t('🎬 Export video')}</button></div>`,
     side: `
       <div class="replay-info">
         <div id="desync" class="note"></div>
         ${replay.players.map((p, i) => `<div class="replay-seat"><span class="dot" style="background:${playerColor(i)}"></span>${escapeHtml(p.name)} <span class="muted">${escapeHtml(sources[i])}${p.sourceHash ? ` · ${p.sourceHash.slice(0, 8)}` : ''}</span></div>`).join('')}
-        ${replay.cheats.length ? `<div class="note">${replay.cheats.length} debug cheat(s) recorded</div>` : ''}
+        ${replay.cheats.length ? `<div class="note">${t('{n} debug cheat(s) recorded', { n: replay.cheats.length })}</div>` : ''}
       </div>`,
-    help: '<b>P</b> pause · <b>N</b> step · <b>[ ]</b> speed · <b>← →</b> seek 5s · <b>R</b> restart · <b>F3</b> debug',
+    help: t('<b>P</b> pause · <b>N</b> step · <b>[ ]</b> speed · <b>← →</b> seek 5s · <b>R</b> restart · <b>F3</b> debug'),
   }, {
     onRestart: () => seekTo(0),
     onExit: () => callbacks.onExit(),
@@ -58,12 +63,12 @@ export function mountReplay(app: HTMLElement, replay: Replay, callbacks: { onExi
     onPanel: (s) => {
       if (!seeking) seek.value = String(s.tick);
       shell.el('seek-time').textContent = `${formatTime(s.tick, tickRate)} / ${formatTime(total, tickRate)}`;
-      shell.setInfo(`tick ${s.tick} / ${total}${zoneStatus(s)} · ${shell.loop?.actualTps ?? 0} tps`);
+      shell.setInfo(`${t('tick {tick} / {total}', { tick: s.tick, total })}${zoneStatus(s)} · ${shell.loop?.actualTps ?? 0} tps`);
       const desync = shell.el('desync');
       desync.className = player.desyncs.length ? 'note warn-text' : 'note';
       desync.textContent = player.desyncs.length
-        ? `⚠ Desync at tick ${player.desyncs[0]}: the re-simulation no longer matches the recording (engine or config changed since it was recorded?).`
-        : 'Checksums match the recording so far.';
+        ? t('⚠ Desync at tick {tick}: the re-simulation no longer matches the recording (engine or config changed since it was recorded?).', { tick: player.desyncs[0] })
+        : t('Checksums match the recording so far.');
     },
     onKey: (e) => {
       if (e.code === 'ArrowLeft' || e.code === 'ArrowRight') {

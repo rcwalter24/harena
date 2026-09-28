@@ -1,6 +1,7 @@
 import type { GameEvent, GameState } from '../engine/types.ts';
 import { zoneAt, zoneEnabled } from '../engine/systems/zone.ts';
 import { playerColor } from '../render/renderer.ts';
+import { t } from './i18n.ts';
 
 function el<K extends keyof HTMLElementTagNameMap>(tag: K, className = '', text = ''): HTMLElementTagNameMap[K] {
   const node = document.createElement(tag);
@@ -34,26 +35,27 @@ export class PlayerCards {
       card.classList.toggle('eliminated', p.eliminated);
       card.classList.toggle('focus', p.id === focusId);
       const status = p.eliminated
-        ? 'eliminated'
+        ? t('eliminated')
         : !p.alive
-          ? `respawn in ${(p.respawnTimer / state.config.tickRate).toFixed(1)}s`
-          : p.invulnerableTimer > 0 ? 'invulnerable' : '';
+          ? t('respawn in {s}s', { s: (p.respawnTimer / state.config.tickRate).toFixed(1) })
+          : p.invulnerableTimer > 0 ? t('invulnerable') : '';
+      const label = (w: 'knife' | 'gun' | 'launcher') => (p.weapon === w ? `<b>${t(w)}</b>` : t(w));
       const owned = [
-        p.hasGun ? `${p.weapon === 'gun' ? '<b>gun</b>' : 'gun'} ${p.ammo}` : '',
-        p.hasLauncher ? `${p.weapon === 'launcher' ? '<b>launcher</b>' : 'launcher'} ${p.grenades}` : '',
-        p.mines > 0 ? `mines ${p.mines}` : '',
+        p.hasGun ? `${label('gun')} ${p.ammo}` : '',
+        p.hasLauncher ? `${label('launcher')} ${p.grenades}` : '',
+        p.mines > 0 ? t('mines {n}', { n: p.mines }) : '',
       ].filter(Boolean);
-      const weapon = [p.weapon === 'knife' ? '<b>knife</b>' : 'knife', ...owned].join(' · ');
+      const weapon = [label('knife'), ...owned].join(' · ');
       card.innerHTML = `
         <div class="card-head">
           <span class="dot" style="background:${playerColor(p.id)}"></span>
           <span class="name"></span>
-          <span class="lives" title="lives">♥ ${p.lives}</span>
+          <span class="lives" title="${t('lives')}">♥ ${p.lives}</span>
         </div>
         <div class="bar hp"><div style="width:${(100 * p.hp) / player.maxHp}%"></div><span>${Math.ceil(p.hp)}</span></div>
         <div class="bar shield"><div style="width:${(100 * p.shield) / player.maxShield}%"></div><span>${Math.ceil(p.shield)}</span></div>
         <div class="card-weapons">${weapon}</div>
-        <div class="card-foot"><span class="status">${status}</span><span>K ${p.stats.kills} · D ${p.stats.deaths}</span></div>
+        <div class="card-foot"><span class="status">${status}</span><span>${t('K')} ${p.stats.kills} · ${t('D')} ${p.stats.deaths}</span></div>
 `;
       card.querySelector('.name')!.textContent = p.name;
     }
@@ -64,10 +66,10 @@ export class PlayerCards {
 export function zoneStatus(state: GameState): string {
   if (!zoneEnabled(state.config)) return '';
   const zone = zoneAt(state);
-  if (state.tick < zone.startTick) return ` · zone shrinks in ${Math.ceil((zone.startTick - state.tick) / state.config.tickRate)}s`;
-  if (state.tick < zone.endTick) return ' · zone shrinking';
-  if (state.tick < zone.collapseStartTick) return ` · zone collapses in ${Math.ceil((zone.collapseStartTick - state.tick) / state.config.tickRate)}s`;
-  return zone.radius > 0 ? ' · zone collapsing' : ' · zone closed';
+  if (state.tick < zone.startTick) return t(' · zone shrinks in {s}s', { s: Math.ceil((zone.startTick - state.tick) / state.config.tickRate) });
+  if (state.tick < zone.endTick) return t(' · zone shrinking');
+  if (state.tick < zone.collapseStartTick) return t(' · zone collapses in {s}s', { s: Math.ceil((zone.collapseStartTick - state.tick) / state.config.tickRate) });
+  return zone.radius > 0 ? t(' · zone collapsing') : t(' · zone closed');
 }
 
 /** Kill messages overlaid on the arena; each fades after a few seconds. */
@@ -97,10 +99,10 @@ export class KillFeed {
           row.append(name(e.killerId), el('span', 'how', icon), name(e.playerId));
         } else {
           const how = e.weapon === 'launcher' || e.weapon === 'mine' ? ' blew themselves up' : e.weapon === 'zone' ? ' was caught outside the zone' : ' died';
-          row.append(name(e.playerId), el('span', 'how', how));
+          row.append(name(e.playerId), el('span', 'how', t(how)));
         }
       } else {
-        row.append(name(e.playerId), el('span', 'how', ' is eliminated'));
+        row.append(name(e.playerId), el('span', 'how', t(' is eliminated')));
         row.classList.add('elim');
       }
       this.root.prepend(row);

@@ -1,6 +1,7 @@
 import type { BotReview } from '../review/jev.ts';
 import { sourceHash, staticCheck, type StaticCheckResult } from '../review/staticCheck.ts';
 import { localBotId } from './botCode.ts';
+import { t } from './i18n.ts';
 
 /** A bot from bots/ (bundled at build time) or one pasted into this browser. */
 export interface BotEntry {
@@ -70,7 +71,7 @@ function storeLocal(bots: BotEntry[]): void {
   try {
     localStorage.setItem(LOCAL_KEY, JSON.stringify(stored));
   } catch {
-    throw new Error('This browser would not store the bot (storage is full or disabled, e.g. in a private window).');
+    throw new Error(t('This browser would not store the bot (storage is full or disabled, e.g. in a private window).'));
   }
   localBots = bots;
 }

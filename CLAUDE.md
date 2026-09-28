@@ -50,7 +50,9 @@ git history; this file lists the rules that must keep holding.
 
 - Node 26 runs `.ts` directly (type stripping): use `.ts` import extensions and erasable syntax
   only (no enums/namespaces/parameter properties).
-- Code, comments, docs and commit messages in English; UI text English.
+- Code, comments, docs and commit messages in English. UI text is written in English and wrapped
+  in `t()` (`src/ui/i18n.ts`); add the Chinese to `ZH` there (a test checks every `t()` literal).
+  Bot-facing text (static-check findings, bot log, the AI prompt) stays English.
 - Commit messages: no `Co-Authored-By` or any AI attribution.
 - Maps are JSON in `maps/` (one entity per line); tests check validity and reachability.
 - Run `npm run typecheck && npm test` before committing; UI changes are verified in a real

@@ -1,6 +1,7 @@
 import type { GameEvent, GameState } from '../engine/types.ts';
 import { Renderer, type FrameCapture } from '../render/renderer.ts';
 import { KillFeed, PlayerCards } from './hud.ts';
+import { t } from './i18n.ts';
 import { GameLoop, type Ticker } from './loop.ts';
 
 export interface ShellOptions {
@@ -62,20 +63,20 @@ export class ArenaShell {
         <aside class="panel">
           <div class="panel-head">
             <h1>Harena ${opts.badge ? `<span class="badge replay">${opts.badge}</span>` : ''}</h1>
-            <button id="exit" title="Esc">← Setup</button>
+            <button id="exit" title="Esc">${t('← Setup')}</button>
           </div>
           <div class="match-meta">${opts.meta}</div>
           <div class="controls">
             <div class="row">
-              <button id="pause" title="P">Pause</button>
-              <button id="step" title="N">Step</button>
+              <button id="pause" title="P">${t('Pause')}</button>
+              <button id="step" title="N">${t('Step')}</button>
               <button id="restart" title="R">${opts.restartLabel}</button>
             </div>
             <div class="row">
               <button id="slower" title="[">−</button>
               <span id="speed" class="speed">1×</span>
               <button id="faster" title="]">+</button>
-              <label class="check"><input type="checkbox" id="debug" /> Debug (F3)</label>
+              <label class="check"><input type="checkbox" id="debug" /> ${t('Debug (F3)')}</label>
             </div>
             ${opts.extraControls ?? ''}
           </div>
@@ -179,7 +180,7 @@ export class ArenaShell {
   syncButtons(): void {
     if (!this.loop) return;
     this.el('speed').textContent = `${this.loop.speed}×`;
-    this.el('pause').textContent = this.loop.paused ? 'Resume' : 'Pause';
+    this.el('pause').textContent = this.loop.paused ? t('Resume') : t('Pause');
   }
 
   dispose(): void {

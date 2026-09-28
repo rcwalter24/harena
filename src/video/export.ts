@@ -3,6 +3,7 @@ import { ReplayPlayer, type Replay } from '../engine/replay.ts';
 import { Renderer } from '../render/renderer.ts';
 import { ARENA, drawGameFrame, drawIntro, drawOutro, feedLines, formatClock, VIDEO_H, VIDEO_W, type FeedEntry, type FrameInfo } from './frame.ts';
 import { isActionEvent, planFrames, VIDEO_FPS } from './timeline.ts';
+import { t } from '../ui/i18n.ts';
 
 const INTRO_SECONDS = 2;
 const OUTRO_SECONDS = 4;
@@ -62,7 +63,7 @@ function actionTicks(replay: Replay): { ticks: number[]; endTick: number } {
  */
 export async function exportReplayVideo(replay: Replay, opts: VideoExportOptions): Promise<VideoFile> {
   const encoding = await pickEncoding();
-  if (!encoding) throw new Error('This browser cannot encode video. Use a recent Chrome, Edge or Safari.');
+  if (!encoding) throw new Error(t('This browser cannot encode video. Use a recent Chrome, Edge or Safari.'));
 
   const tickRate = replay.config.tickRate;
   const { ticks, endTick } = actionTicks(replay);
@@ -80,8 +81,8 @@ export async function exportReplayVideo(replay: Replay, opts: VideoExportOptions
 
   const player = new ReplayPlayer(replay);
   const info: FrameInfo = {
-    title: `${replay.map.name} · seed ${replay.seed}`,
-    sources: replay.players.map((p) => (p.kind === 'bot' ? p.source ?? 'bot' : p.kind === 'human' ? 'human player' : `dummy: ${p.source ?? ''}`)),
+    title: `${t(replay.map.name)} · ${t('seed {seed}', { seed: replay.seed })}`,
+    sources: replay.players.map((p) => (p.kind === 'bot' ? p.source ?? 'bot' : p.kind === 'human' ? t('human player') : t('dummy: {kind}', { kind: t(p.source ?? '') }))),
     timeLimitTicks: player.state.timeLimitTicks,
   };
   const feed: FeedEntry[] = [];
@@ -106,10 +107,10 @@ export async function exportReplayVideo(replay: Replay, opts: VideoExportOptions
   };
   const renderArena = () => renderer.render(player.state, null, 1, { debug: false });
 
-  const limit = replay.timeLimit > 0 ? `${formatClock(replay.timeLimit * tickRate, tickRate)} time limit` : 'no time limit';
+  const limit = replay.timeLimit > 0 ? t('{time} time limit', { time: formatClock(replay.timeLimit * tickRate, tickRate) }) : t('no time limit');
   renderArena();
   drawGameFrame(ctx, arenaCanvas, player.state, info, feed, now, false);
-  drawIntro(ctx, player.state, info, `seed ${replay.seed} · ${limit}`);
+  drawIntro(ctx, player.state, info, `${t('seed {seed}', { seed: replay.seed })} · ${limit}`);
   for (let i = 0; i < introFrames; i++) await emit();
 
   for (const frame of frames) {

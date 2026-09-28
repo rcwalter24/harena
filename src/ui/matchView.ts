@@ -14,6 +14,7 @@ import { zoneStatus } from './hud.ts';
 import { openVideoExport } from './videoDialog.ts';
 import { displayName, getBot } from './bots.ts';
 import { HumanController } from './input.ts';
+import { t } from './i18n.ts';
 import { randomSeed, saveSetup, type MatchSetup } from './matchSetup.ts';
 import { getMap } from './maps.ts';
 import { downloadJson, escapeHtml, showResults } from './results.ts';
@@ -21,8 +22,8 @@ import { downloadJson, escapeHtml, showResults } from './results.ts';
 /** Display names for the seats, numbering duplicates ("Gunner", "Gunner #2"). */
 function seatNames(setup: MatchSetup): string[] {
   const base = setup.slots.map((s) => {
-    if (s.kind === 'human') return 'You';
-    if (s.kind === 'dummy') return `${s.dummy} dummy`;
+    if (s.kind === 'human') return t('You');
+    if (s.kind === 'dummy') return t('{kind} dummy', { kind: t(s.dummy) });
     const bot = getBot(s.file);
     return bot ? displayName(bot) : s.file;
   });
@@ -65,7 +66,13 @@ export function mountMatch(app: HTMLElement, setup: MatchSetup, callbacks: Match
     ...(setup.debug ? { player: { startLives: 99, maxLives: 99 } } : {}),
     ...(setup.zone === false ? { zone: { damagePerSecond: 0 } } : {}),
   });
-  const metaText = () => `${map.name} · seed ${escapeHtml(setup.seed)} · ${setup.timeLimit > 0 ? `${setup.timeLimit}s` : 'no time limit'}${setup.zone === false ? ' · no zone' : ''}${setup.debug ? ' · debug rules' : ''}`;
+  const metaText = () => [
+    t(map.name),
+    t('seed {seed}', { seed: escapeHtml(setup.seed) }),
+    setup.timeLimit > 0 ? t('{s}s', { s: setup.timeLimit }) : t('no time limit'),
+    ...(setup.zone === false ? [t('no zone')] : []),
+    ...(setup.debug ? [t('debug rules')] : []),
+  ].join(' · ');
 
   let runner: MatchRunner | null = null;
   let recorder: ReplayRecorder | null = null;
@@ -75,15 +82,15 @@ export function mountMatch(app: HTMLElement, setup: MatchSetup, callbacks: Match
 
   const shell = new ArenaShell(app, {
     meta: metaText(),
-    restartLabel: 'Restart',
+    restartLabel: t('Restart'),
     side: `
       <div class="logs">
-        <div class="logs-head"><b>Bot log</b><select id="log-filter"></select></div>
+        <div class="logs-head"><b>${t('Bot log')}</b><select id="log-filter"></select></div>
         <div class="log-list" id="log-list"></div>
       </div>`,
-    help: `${hasHuman ? '<b>WASD</b> move · <b>mouse</b> aim · <b>click/Space</b> attack<br /><b>1/2/3</b> knife/gun/launcher · <b>Q</b> next weapon · <b>E/right click</b> mine<br />' : ''}
-      <b>P</b> pause · <b>N</b> step · <b>[ ]</b> speed · <b>R</b> restart · <b>F3</b> debug
-      ${setup.debug ? '<br />Cheats: <b>G</b> all weapons + ammo + mines · <b>H</b> heal + shield' : ''}`,
+    help: `${hasHuman ? t('<b>WASD</b> move · <b>mouse</b> aim · <b>click/Space</b> attack<br /><b>1/2/3</b> knife/gun/launcher · <b>Q</b> next weapon · <b>E/right click</b> mine<br />') : ''}
+      ${t('<b>P</b> pause · <b>N</b> step · <b>[ ]</b> speed · <b>R</b> restart · <b>F3</b> debug')}
+      ${setup.debug ? t('<br />Cheats: <b>G</b> all weapons + ammo + mines · <b>H</b> heal + shield') : ''}`,
   }, {
     viewerId: hasHuman ? humanId : undefined,
     onRestart: () => start(),
@@ -92,9 +99,9 @@ export function mountMatch(app: HTMLElement, setup: MatchSetup, callbacks: Match
       if (events.some((e) => e.type === 'matchEnd')) finish(s);
     },
     onPanel: (s) => {
-      const t = s.tick / s.config.tickRate;
-      const left = s.timeLimitTicks > 0 ? ` · ${Math.max(0, setup.timeLimit - t).toFixed(0)}s left` : '';
-      shell.setInfo(`tick ${s.tick} · ${t.toFixed(1)}s${left}${zoneStatus(s)} · ${shell.loop?.actualTps ?? 0} tps`);
+      const time = s.tick / s.config.tickRate;
+      const left = s.timeLimitTicks > 0 ? t(' · {s}s left', { s: Math.max(0, setup.timeLimit - time).toFixed(0) }) : '';
+      shell.setInfo(`${t('tick {tick} · {time}s', { tick: s.tick, time: time.toFixed(1) })}${left}${zoneStatus(s)} · ${shell.loop?.actualTps ?? 0} tps`);
       if (logsDirty) renderLogs();
     },
     onKey: (e) => {
@@ -106,7 +113,7 @@ export function mountMatch(app: HTMLElement, setup: MatchSetup, callbacks: Match
 
   const logList = shell.el('log-list');
   const logFilter = shell.el<HTMLSelectElement>('log-filter');
-  logFilter.add(new Option('All bots', 'all'));
+  logFilter.add(new Option(t('All bots'), 'all'));
   setup.slots.forEach((s, id) => {
     if (s.kind === 'bot') logFilter.add(new Option(names[id], String(id)));
   });
@@ -120,7 +127,7 @@ export function mountMatch(app: HTMLElement, setup: MatchSetup, callbacks: Match
     rows.sort((a, b) => a.entry.tick - b.entry.tick);
     const shown = rows.slice(-200);
     logList.innerHTML = shown.length === 0
-      ? '<div class="log-empty">No messages yet.</div>'
+      ? `<div class="log-empty">${t('No messages yet.')}</div>`
       : shown.map(({ id, entry }) => `
         <div class="log ${entry.level}">
           <span class="log-tick">${entry.tick}</span>
@@ -138,7 +145,7 @@ export function mountMatch(app: HTMLElement, setup: MatchSetup, callbacks: Match
   }
 
   function sources(): string[] {
-    return setup.slots.map((s) => (s.kind === 'bot' ? s.file : s.kind === 'human' ? 'keyboard' : `dummy: ${s.dummy}`));
+    return setup.slots.map((s) => (s.kind === 'bot' ? (getBot(s.file)?.local ? t('your bot') : s.file) : s.kind === 'human' ? t('keyboard') : t('dummy: {kind}', { kind: t(s.dummy) })));
   }
 
   function finish(s: GameState): void {
@@ -194,7 +201,7 @@ export function mountMatch(app: HTMLElement, setup: MatchSetup, callbacks: Match
     current.recorder = recorder;
     runner = current;
     const loop = shell.run(current);
-    shell.setInfo('starting bots…');
+    shell.setInfo(t('starting bots…'));
     void current.init().then(() => {
       if (runner === current) loop.start();
     });

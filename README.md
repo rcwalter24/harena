@@ -37,7 +37,8 @@ npm run dev
 ```
 
 Open the printed URL (usually <http://localhost:5173>), pick a map and some bots on the setup
-page, and press **Start match**.
+page, and press **Start match**. The interface is in English or Chinese (it follows your browser;
+switch with the button at the top right).
 
 ## Write a bot with an AI
 

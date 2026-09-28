@@ -7,6 +7,7 @@ import type { BotReview } from '../review/jev.ts';
 import { playerColor } from '../render/renderer.ts';
 import { botPrompt, copyText, openBotEditor, openCopyFallback } from './botDialog.ts';
 import { CAN_REVIEW, deleteLocalBot, displayName, fetchReviews, getBot, hasAlias, listBots, MAX_ALIAS_LENGTH, requestReview, reviewBadge, setAlias, type BotEntry, type ReviewBadge } from './bots.ts';
+import { getLang, locale, setLang, t, type Lang } from './i18n.ts';
 import { MAPS } from './maps.ts';
 import { loadSetup, randomSeed, saveSetup, type MatchSetup, type SlotSpec } from './matchSetup.ts';
 
@@ -20,6 +21,7 @@ const BADGE_TEXT: Record<ReviewBadge, string> = {
   unreviewed: 'not reviewed',
   local: 'checked ✓',
 };
+const badgeText = (badge: ReviewBadge) => t(BADGE_TEXT[badge]);
 
 function escapeHtml(text: string): string {
   return text.replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]!);
@@ -50,6 +52,8 @@ function sanitizeSetup(setup: MatchSetup): MatchSetup {
 export interface SetupCallbacks {
   onStart: (setup: MatchSetup) => void;
   onReplay: (replay: Replay) => void;
+  /** The UI language changed: mount the page again. */
+  onLanguage: () => void;
 }
 
 export function mountSetup(app: HTMLElement, callbacks: SetupCallbacks): () => void {
@@ -64,9 +68,10 @@ export function mountSetup(app: HTMLElement, callbacks: SetupCallbacks): () => v
   app.innerHTML = `
     <div class="setup">
       <header class="setup-head">
-        <h1>Harena <small>bot arena</small></h1>
+        <h1>Harena <small>${t('bot arena')}</small></h1>
         <div class="head-links">
-          <button id="load-replay" title="Open a replay .json file">Load replay…</button>
+          <button id="lang" title="Language / 语言">${getLang() === 'zh' ? 'English' : '中文'}</button>
+          <button id="load-replay" title="${t('Open a replay .json file')}">${t('Load replay…')}</button>
           <input type="file" id="replay-file" accept=".json,application/json" hidden />
           <a class="doc-link" href="BOT_API.md" target="_blank" rel="noreferrer">BOT_API.md</a>
         </div>
@@ -74,38 +79,38 @@ export function mountSetup(app: HTMLElement, callbacks: SetupCallbacks): () => v
       <div class="setup-grid">
         <section class="box">
           <div class="starter">
-            <b>Get a bot from any AI chat</b>
+            <b>${t('Get a bot from any AI chat')}</b>
             <ol>
-              <li><button id="copy-prompt">📋 Copy AI prompt</button> and paste it into ChatGPT, DeepSeek, Doubao, Claude, Gemini…
+              <li><button id="copy-prompt">${t('📋 Copy AI prompt')}</button> ${t('and paste it into ChatGPT, DeepSeek, Doubao, Claude, Gemini…')}
                 <span id="prompt-status" class="muted"></span></li>
-              <li>Copy the AI's whole reply.</li>
-              <li><button id="add-bot">+ Add bot</button> and paste it in.</li>
+              <li>${t("Copy the AI's whole reply.")}</li>
+              <li><button id="add-bot">${t('+ Add bot')}</button> ${t('and paste it in.')}</li>
             </ol>
           </div>
-          <h2>Bots</h2>
+          <h2>${t('Bots')}</h2>
           <div id="bot-list" class="bot-list"></div>
-          <h2>Other players</h2>
+          <h2>${t('Other players')}</h2>
           <div class="other-players">
-            <button id="add-human">+ You (keyboard)</button>
+            <button id="add-human">${t('+ You (keyboard)')}</button>
             <select id="dummy-kind"></select>
-            <button id="add-dummy">+ Dummy</button>
+            <button id="add-dummy">${t('+ Dummy')}</button>
           </div>
         </section>
         <section class="box">
-          <h2>Match</h2>
+          <h2>${t('Match')}</h2>
           <div class="form">
-            <label>Map <select id="map"></select></label>
+            <label>${t('Map')} <select id="map"></select></label>
             <canvas id="map-preview" class="map-preview"></canvas>
-            <div class="note">Coloured dots: where each player starts with this seed.</div>
-            <label>Seed <span class="seed-row"><input type="text" id="seed" /><button id="reseed" title="Random seed">🎲</button></span></label>
-            <label>Time limit (s) <input type="number" id="time" min="0" max="3600" step="10" /></label>
-            <label class="check"><input type="checkbox" id="zone" /> Shrinking safe zone (from ${DEFAULT_CONFIG.zone.shrinkStart}s)</label>
-            <label class="check"><input type="checkbox" id="debug" /> Debug rules (99 lives, cheat keys)</label>
+            <div class="note">${t('Coloured dots: where each player starts with this seed.')}</div>
+            <label>${t('Seed')} <span class="seed-row"><input type="text" id="seed" /><button id="reseed" title="${t('Random seed')}">🎲</button></span></label>
+            <label>${t('Time limit (s)')} <input type="number" id="time" min="0" max="3600" step="10" /></label>
+            <label class="check"><input type="checkbox" id="zone" /> ${t('Shrinking safe zone (from {s}s)', { s: DEFAULT_CONFIG.zone.shrinkStart })}</label>
+            <label class="check"><input type="checkbox" id="debug" /> ${t('Debug rules (99 lives, cheat keys)')}</label>
           </div>
-          <h2>Players <small id="count"></small></h2>
+          <h2>${t('Players')} <small id="count"></small></h2>
           <div id="slots" class="slots"></div>
           <div id="start-note" class="note"></div>
-          <button id="start" class="primary">Start match</button>
+          <button id="start" class="primary">${t('Start match')}</button>
         </section>
       </div>
     </div>`;
@@ -120,24 +125,24 @@ export function mountSetup(app: HTMLElement, callbacks: SetupCallbacks): () => v
   const zoneBox = $<HTMLInputElement>('zone');
   const dummyKind = $<HTMLSelectElement>('dummy-kind');
 
-  for (const m of MAPS) mapSelect.add(new Option(`${m.name} (${m.width}×${m.height})`, m.id));
-  for (const k of DUMMY_KINDS) dummyKind.add(new Option(k, k));
+  for (const m of MAPS) mapSelect.add(new Option(`${t(m.name)} (${m.width}×${m.height})`, m.id));
+  for (const k of DUMMY_KINDS) dummyKind.add(new Option(t(k), k));
 
   function persist(): void {
     saveSetup(setup);
   }
 
   function slotLabel(slot: SlotSpec): { name: string; sub: string; badge?: ReviewBadge } {
-    if (slot.kind === 'human') return { name: 'You', sub: 'keyboard + mouse' };
-    if (slot.kind === 'dummy') return { name: `${slot.dummy} dummy`, sub: 'scripted test opponent' };
+    if (slot.kind === 'human') return { name: t('You'), sub: t('keyboard + mouse') };
+    if (slot.kind === 'dummy') return { name: t('{kind} dummy', { kind: t(slot.dummy) }), sub: t('scripted test opponent') };
     const bot = getBot(slot.file)!;
-    return { name: displayName(bot), sub: bot.local ? 'your bot' : slot.file, badge: reviewBadge(bot, reviews[slot.file]) };
+    return { name: displayName(bot), sub: bot.local ? t('your bot') : slot.file, badge: reviewBadge(bot, reviews[slot.file]) };
   }
 
   function renderBots(): void {
     const bots = listBots();
     if (bots.length === 0) {
-      botList.innerHTML = '<div class="note">No bots yet. Add one above, or put <code>.js</code> files in <code>bots/</code>.</div>';
+      botList.innerHTML = `<div class="note">${t('No bots yet. Add one above, or put <code>.js</code> files in <code>bots/</code>.')}</div>`;
       return;
     }
     botList.innerHTML = '';
@@ -158,26 +163,26 @@ export function mountSetup(app: HTMLElement, callbacks: SetupCallbacks): () => v
     ];
     const jev = review && review.sourceHash === bot.hash && review.jev && !('error' in review.jev) ? review.jev : null;
     const details = jev
-      ? `quality ${jev.quality.score.toFixed(1)}/${jev.quality.max} · interface: ${jev.conformance.choice} · ${new Date(review!.reviewedAt).toLocaleString()}`
+      ? t('quality {q}/{max} · interface: {i} · {date}', { q: jev.quality.score.toFixed(1), max: jev.quality.max, i: t(jev.conformance.choice), date: new Date(review!.reviewedAt).toLocaleString(locale()) })
       : '';
     const editing = renaming?.file === bot.file;
     const title = editing
       ? `<input class="rename-input" maxlength="${MAX_ALIAS_LENGTH}" placeholder="${escapeHtml(bot.name)}" />`
-      : `<span class="bot-title" title="Click to rename">${escapeHtml(displayName(bot))}</span>`;
-    const origin = bot.local ? 'saved in this browser' : bot.file;
-    const fileInfo = escapeHtml([origin, hasAlias(bot) ? `renamed from ${bot.name}` : '', bot.author].filter(Boolean).join(' · '));
-    const badgeTitle = badge === 'local' ? 'Passed the static check. Bots you add are not AI-reviewed.' : '';
+      : `<span class="bot-title" title="${t('Click to rename')}">${escapeHtml(displayName(bot))}</span>`;
+    const origin = bot.local ? t('saved in this browser') : bot.file;
+    const fileInfo = escapeHtml([origin, hasAlias(bot) ? t('renamed from {name}', { name: bot.name }) : '', bot.author].filter(Boolean).join(' · '));
+    const badgeTitle = badge === 'local' ? t('Passed the static check. Bots you add are not AI-reviewed.') : '';
     const tools = bot.local
-      ? '<button class="edit" title="Change the code or name">Edit</button><button class="delete" title="Delete from this browser">×</button>'
+      ? `<button class="edit" title="${t('Change the code or name')}">${t('Edit')}</button><button class="delete" title="${t('Delete from this browser')}">×</button>`
       : CAN_REVIEW
-        ? `<button class="review" ${reviewing.has(bot.file) ? 'disabled' : ''} title="Static check + Jev AI review">Review</button>`
+        ? `<button class="review" ${reviewing.has(bot.file) ? 'disabled' : ''} title="${t('Static check + Jev AI review')}">${t('Review')}</button>`
         : '';
     row.innerHTML = `
       <div class="bot-main">
         <div class="bot-name">${title} <span class="bot-file" title="${fileInfo}">${fileInfo}</span></div>
-        <span class="badge ${badge}" title="${badgeTitle}">${reviewing.has(bot.file) ? 'reviewing…' : BADGE_TEXT[badge]}</span>
+        <span class="badge ${badge}" title="${badgeTitle}">${reviewing.has(bot.file) ? t('reviewing…') : badgeText(badge)}</span>
         ${tools}
-        <button class="add" ${!bot.static.ok || setup.slots.length >= maxPlayers ? 'disabled' : ''}>+ Add</button>
+        <button class="add" ${!bot.static.ok || setup.slots.length >= maxPlayers ? 'disabled' : ''}>${t('+ Add')}</button>
       </div>
       ${reasons.length || details ? `<div class="bot-reasons">${reasons.map((r) => `<div>${escapeHtml(r)}</div>`).join('')}${details ? `<div class="muted">${escapeHtml(details)}</div>` : ''}</div>` : ''}`;
     row.querySelector<HTMLButtonElement>('.add')!.onclick = () => addSlot({ kind: 'bot', file: bot.file });
@@ -201,7 +206,7 @@ export function mountSetup(app: HTMLElement, callbacks: SetupCallbacks): () => v
   }
 
   function removeLocalBot(bot: BotEntry): void {
-    if (!confirm(`Delete "${displayName(bot)}" from this browser? This can't be undone.`)) return;
+    if (!confirm(t('Delete "{name}" from this browser? This can\'t be undone.', { name: displayName(bot) }))) return;
     deleteLocalBot(bot.file);
     setup.slots = setup.slots.filter((s) => s.kind !== 'bot' || s.file !== bot.file);
     persist();
@@ -249,7 +254,7 @@ export function mountSetup(app: HTMLElement, callbacks: SetupCallbacks): () => v
     try {
       reviews[file] = await requestReview(file);
     } catch (err) {
-      alert(`Review of ${file} failed: ${(err as Error).message}`);
+      alert(t('Review of {file} failed: {error}', { file, error: (err as Error).message }));
     } finally {
       reviewing.delete(file);
       renderAll();
@@ -259,20 +264,20 @@ export function mountSetup(app: HTMLElement, callbacks: SetupCallbacks): () => v
   function renderSlots(): void {
     $('count').textContent = `${setup.slots.length} / ${maxPlayers}`;
     slotsEl.innerHTML = '';
-    if (setup.slots.length === 0) slotsEl.innerHTML = '<div class="note">Add bots from the list.</div>';
+    if (setup.slots.length === 0) slotsEl.innerHTML = `<div class="note">${t('Add bots from the list.')}</div>`;
     setup.slots.forEach((slot, i) => {
       const { name, sub, badge } = slotLabel(slot);
       const el = document.createElement('div');
       el.className = 'slot';
       const flag = badge === 'warn' || badge === 'danger' || badge === 'error'
-        ? `<span class="badge ${badge}" title="See the bot's review">${BADGE_TEXT[badge]}</span>`
+        ? `<span class="badge ${badge}">${badgeText(badge)}</span>`
         : '';
       el.innerHTML = `
         <span class="dot" style="background:${playerColor(i)}"></span>
         <span class="slot-name">${escapeHtml(name)}</span>
         <span class="slot-sub">${escapeHtml(sub)}</span>
         ${flag}
-        <button class="remove" title="Remove">×</button>`;
+        <button class="remove" title="${t('Remove')}">×</button>`;
       el.querySelector<HTMLButtonElement>('.remove')!.onclick = () => {
         setup.slots.splice(i, 1);
         persist();
@@ -285,7 +290,7 @@ export function mountSetup(app: HTMLElement, callbacks: SetupCallbacks): () => v
     const needed = setup.debug ? 1 : 2;
     start.disabled = setup.slots.length < needed;
     note.textContent = setup.slots.length < needed
-      ? `Add at least ${needed} player${needed > 1 ? 's' : ''}${setup.debug ? '' : ' (or enable debug rules to play alone)'}.`
+      ? setup.debug ? t('Add at least {n} player.', { n: needed }) : t('Add at least {n} players (or enable debug rules to play alone).', { n: needed })
       : '';
   }
 
@@ -339,7 +344,7 @@ export function mountSetup(app: HTMLElement, callbacks: SetupCallbacks): () => v
     try {
       callbacks.onReplay(validateReplay(JSON.parse(await file.text())));
     } catch (err) {
-      alert(`Could not open ${file.name}: ${(err as Error).message}`);
+      alert(t('Could not open {file}: {error}', { file: file.name, error: (err as Error).message }));
     }
   };
   seedInput.oninput = () => {
@@ -370,8 +375,8 @@ export function mountSetup(app: HTMLElement, callbacks: SetupCallbacks): () => v
   const prompt = botPrompt();
   $('copy-prompt').onclick = async () => {
     const text = await prompt;
-    if (await copyText(text)) $('prompt-status').textContent = 'Copied ✓';
-    else openCopyFallback('AI prompt', text);
+    if (await copyText(text)) $('prompt-status').textContent = t('Copied ✓');
+    else openCopyFallback(t('AI prompt'), text);
   };
   $('add-bot').onclick = () =>
     openBotEditor(null, (bot) => {
@@ -379,6 +384,11 @@ export function mountSetup(app: HTMLElement, callbacks: SetupCallbacks): () => v
       persist();
       renderAll();
     });
+  $('lang').onclick = () => {
+    const next: Lang = getLang() === 'zh' ? 'en' : 'zh';
+    setLang(next);
+    callbacks.onLanguage();
+  };
   $('add-human').onclick = () => addSlot({ kind: 'human' });
   $('add-dummy').onclick = () => addSlot({ kind: 'dummy', dummy: dummyKind.value as DummyKind });
   $('start').onclick = () => {

@@ -1,6 +1,7 @@
 import type { GameEvent, GameState, PlayerState } from '../engine/types.ts';
 import { playerColor } from '../render/renderer.ts';
 import { zoneStatus } from '../ui/hud.ts';
+import { t } from '../ui/i18n.ts';
 
 /** Layout of a 1080p video frame: the arena on the left, a player panel on the right. */
 export const VIDEO_W = 1920;
@@ -63,14 +64,14 @@ export function feedLines(events: readonly GameEvent[], state: GameState): Part[
   for (const e of events) {
     if (e.type === 'death') {
       if (e.killerId >= 0) {
-        const how = e.weapon === 'gun' ? ' shot ' : e.weapon === 'knife' ? ' knifed ' : ' blew up ';
+        const how = t(e.weapon === 'gun' ? ' shot ' : e.weapon === 'knife' ? ' knifed ' : ' blew up ');
         lines.push([who(e.killerId), { text: how, color: MUTED }, who(e.playerId)]);
       } else {
-        const how = e.weapon === 'launcher' || e.weapon === 'mine' ? ' blew themselves up' : e.weapon === 'zone' ? ' was caught outside the zone' : ' died';
+        const how = t(e.weapon === 'launcher' || e.weapon === 'mine' ? ' blew themselves up' : e.weapon === 'zone' ? ' was caught outside the zone' : ' died');
         lines.push([who(e.playerId), { text: how, color: MUTED }]);
       }
     } else if (e.type === 'eliminated') {
-      lines.push([who(e.playerId), { text: ' is eliminated', color: '#ff8a80' }]);
+      lines.push([who(e.playerId), { text: t(' is eliminated'), color: '#ff8a80' }]);
     }
   }
   return lines;
@@ -132,7 +133,7 @@ function drawPanel(ctx: Ctx, state: GameState, info: FrameInfo, feed: FeedEntry[
   ctx.textAlign = 'left';
   ctx.font = `600 16px ${FONT}`;
   ctx.fillStyle = MUTED;
-  ctx.fillText('KILL FEED', PANEL.x, feedTop + 16);
+  ctx.fillText(t('KILL FEED'), PANEL.x, feedTop + 16);
   ctx.font = `19px ${FONT}`;
   const visible = feed.filter((f) => now - f.born < 6000).slice(-6).reverse();
   visible.forEach((f, i) => {
@@ -186,19 +187,19 @@ function drawCard(ctx: Ctx, state: GameState, p: PlayerState, source: string, x:
   ctx.font = `${compact ? 15 : 17}px ${FONT}`;
   ctx.textAlign = 'left';
   let status: Part[];
-  if (p.eliminated) status = [{ text: 'eliminated', color: '#ff8a80' }];
-  else if (!p.alive) status = [{ text: `respawn in ${(p.respawnTimer / state.config.tickRate).toFixed(1)}s`, color: MUTED }];
+  if (p.eliminated) status = [{ text: t('eliminated'), color: '#ff8a80' }];
+  else if (!p.alive) status = [{ text: t('respawn in {s}s', { s: (p.respawnTimer / state.config.tickRate).toFixed(1) }), color: MUTED }];
   else {
-    const weapon = (name: string, detail = '') => ({ text: `${name}${detail}`, color: p.weapon === name ? TEXT : MUTED });
+    const weapon = (name: 'knife' | 'gun' | 'launcher', detail = '') => ({ text: `${t(name)}${detail}`, color: p.weapon === name ? TEXT : MUTED });
     status = [weapon('knife')];
     if (p.hasGun) status.push({ text: ' · ', color: MUTED }, weapon('gun', ` ${p.ammo}`));
     if (p.hasLauncher) status.push({ text: ' · ', color: MUTED }, weapon('launcher', ` ${p.grenades}`));
-    if (p.mines > 0) status.push({ text: ` · mines ${p.mines}`, color: MUTED });
+    if (p.mines > 0) status.push({ text: ` · ${t('mines {n}', { n: p.mines })}`, color: MUTED });
   }
   drawParts(ctx, status, x + pad, lineY);
   ctx.textAlign = 'right';
   ctx.fillStyle = MUTED;
-  ctx.fillText(`K ${p.stats.kills} · D ${p.stats.deaths}`, x + w - pad, lineY);
+  ctx.fillText(`${t('K')} ${p.stats.kills} · ${t('D')} ${p.stats.deaths}`, x + w - pad, lineY);
   ctx.globalAlpha = 1;
 }
 
@@ -227,10 +228,10 @@ export function drawIntro(ctx: Ctx, state: GameState, info: FrameInfo, subtitle:
   ctx.textBaseline = 'alphabetic';
   ctx.fillStyle = MUTED;
   ctx.font = `600 22px ${FONT}`;
-  ctx.fillText('HARENA · AI BOT ARENA', VIDEO_W / 2, y + 60);
+  ctx.fillText(t('HARENA · AI BOT ARENA'), VIDEO_W / 2, y + 60);
   ctx.fillStyle = TEXT;
   ctx.font = `700 54px ${FONT}`;
-  ctx.fillText(state.map.name, VIDEO_W / 2, y + 128);
+  ctx.fillText(t(state.map.name), VIDEO_W / 2, y + 128);
   ctx.fillStyle = MUTED;
   ctx.font = `20px ${FONT}`;
   ctx.fillText(subtitle, VIDEO_W / 2, y + 166);
@@ -271,13 +272,13 @@ export function drawOutro(ctx: Ctx, state: GameState): void {
   ctx.textBaseline = 'alphabetic';
   ctx.fillStyle = MUTED;
   ctx.font = `600 22px ${FONT}`;
-  ctx.fillText(`${REASONS[result.reason] ?? result.reason} · ${formatClock(result.endTick, rate)}`, VIDEO_W / 2, y + 56);
+  ctx.fillText(`${t(REASONS[result.reason] ?? result.reason)} · ${formatClock(result.endTick, rate)}`, VIDEO_W / 2, y + 56);
   ctx.font = `700 52px ${FONT}`;
   if (winners.length === 1) {
-    drawCentred(ctx, [{ text: winners[0].name, color: playerColor(winners[0].id) }, { text: ' wins', color: TEXT }], y + 122);
+    drawCentred(ctx, [{ text: winners[0].name, color: playerColor(winners[0].id) }, { text: t(' wins'), color: TEXT }], y + 122);
   } else {
     ctx.fillStyle = TEXT;
-    ctx.fillText('Draw', VIDEO_W / 2, y + 122);
+    ctx.fillText(t('Draw'), VIDEO_W / 2, y + 122);
   }
 
   const cols = [x + 90, x + 150, x + 560, x + 760, x + 860, x + 1010];
@@ -286,12 +287,12 @@ export function drawOutro(ctx: Ctx, state: GameState): void {
   ctx.fillStyle = MUTED;
   ctx.textAlign = 'left';
   ctx.fillText('#', cols[0], headY);
-  ctx.fillText('PLAYER', cols[1], headY);
-  ctx.fillText('RESULT', cols[2], headY);
+  ctx.fillText(t('PLAYER'), cols[1], headY);
+  ctx.fillText(t('RESULT'), cols[2], headY);
   ctx.textAlign = 'right';
-  ctx.fillText('KILLS', cols[3] + 40, headY);
-  ctx.fillText('DEATHS', cols[4] + 60, headY);
-  ctx.fillText('DAMAGE', cols[5], headY);
+  ctx.fillText(t('KILLS'), cols[3] + 40, headY);
+  ctx.fillText(t('DEATHS'), cols[4] + 60, headY);
+  ctx.fillText(t('DAMAGE'), cols[5], headY);
   result.ranking.forEach((r, i) => {
     const p = state.players[r.playerId];
     const rowY = headY + 46 + i * 52;
@@ -307,7 +308,11 @@ export function drawOutro(ctx: Ctx, state: GameState): void {
     ctx.fillText(p.name, cols[1] + 32, rowY);
     ctx.font = `22px ${FONT}`;
     ctx.fillStyle = p.eliminated ? MUTED : TEXT;
-    ctx.fillText(p.eliminated ? `out at ${formatClock(p.eliminatedTick, rate)}` : `♥ ${p.lives} · ${Math.ceil(p.hp + p.shield)} hp`, cols[2], rowY);
+    ctx.fillText(
+      p.eliminated ? t('out at {time}', { time: formatClock(p.eliminatedTick, rate) }) : t('♥ {lives} · {hp} hp', { lives: p.lives, hp: Math.ceil(p.hp + p.shield) }),
+      cols[2],
+      rowY,
+    );
     ctx.textAlign = 'right';
     ctx.fillStyle = TEXT;
     ctx.fillText(String(p.stats.kills), cols[3] + 40, rowY);

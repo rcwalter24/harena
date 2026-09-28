@@ -1,6 +1,7 @@
 import { staticCheck } from '../review/staticCheck.ts';
 import { extractBotCode, fixRequest } from './botCode.ts';
 import { readMeta, saveLocalBot, type BotEntry } from './bots.ts';
+import { t } from './i18n.ts';
 
 /** Everything an AI needs to write a bot: the task, then the full BOT_API.md. */
 export async function botPrompt(): Promise<string> {
@@ -41,9 +42,9 @@ export function openCopyFallback(title: string, text: string): void {
   root.innerHTML = `
     <div class="modal wide" role="dialog" aria-label="${escapeHtml(title)}">
       <h2>${escapeHtml(title)}</h2>
-      <p class="muted">The browser blocked automatic copying. Select all the text below (Ctrl/⌘ + A) and copy it (Ctrl/⌘ + C).</p>
+      <p class="muted">${t('The browser blocked automatic copying. Select all the text below (Ctrl/⌘ + A) and copy it (Ctrl/⌘ + C).')}</p>
       <textarea class="code-input" readonly></textarea>
-      <div class="modal-actions"><button class="primary">Close</button></div>
+      <div class="modal-actions"><button class="primary">${t('Close')}</button></div>
     </div>`;
   document.body.appendChild(root);
   const area = root.querySelector('textarea')!;
@@ -61,19 +62,19 @@ export function openCopyFallback(title: string, text: string): void {
 export function openBotEditor(existing: BotEntry | null, onSaved: (bot: BotEntry) => void): void {
   const root = document.createElement('div');
   root.className = 'modal-backdrop';
+  const title = existing ? t('Edit bot') : t('Add a bot');
   root.innerHTML = `
-    <div class="modal wide" role="dialog" aria-label="${existing ? 'Edit bot' : 'Add a bot'}">
-      <h2>${existing ? 'Edit bot' : 'Add a bot'}</h2>
-      <p class="muted">Paste the AI's reply (the code block is picked out automatically) or the bot's code,
-        or load a <code>.js</code> file. The bot is saved in this browser only.</p>
-      <label class="field">Name <input type="text" id="bot-name" maxlength="40" placeholder="taken from the code" /></label>
-      <textarea class="code-input" id="bot-code" spellcheck="false" placeholder="Paste the bot code here…"></textarea>
+    <div class="modal wide" role="dialog" aria-label="${title}">
+      <h2>${title}</h2>
+      <p class="muted">${t("Paste the AI's reply (the code block is picked out automatically) or the bot's code, or load a <code>.js</code> file. The bot is saved in this browser only.")}</p>
+      <label class="field">${t('Name')} <input type="text" id="bot-name" maxlength="40" placeholder="${t('taken from the code')}" /></label>
+      <textarea class="code-input" id="bot-code" spellcheck="false" placeholder="${t('Paste the bot code here…')}"></textarea>
       <div id="bot-check" class="bot-check"></div>
       <div class="modal-actions">
-        <button id="bot-file-btn" class="left">Load .js file…</button>
+        <button id="bot-file-btn" class="left">${t('Load .js file…')}</button>
         <input type="file" id="bot-file" accept=".js,.mjs,.txt,text/javascript,text/plain" hidden />
-        <button id="bot-cancel">Cancel</button>
-        <button id="bot-save" class="primary">${existing ? 'Save' : 'Add bot'}</button>
+        <button id="bot-cancel">${t('Cancel')}</button>
+        <button id="bot-save" class="primary">${existing ? t('Save') : t('+ Add bot')}</button>
       </div>
     </div>`;
   document.body.appendChild(root);
@@ -103,20 +104,20 @@ export function openBotEditor(existing: BotEntry | null, onSaved: (bot: BotEntry
       check.innerHTML = '';
       return;
     }
-    nameInput.placeholder = readMeta(code, 'name') ?? 'taken from the code';
+    nameInput.placeholder = readMeta(code, 'name') ?? t('taken from the code');
     const result = staticCheck(code);
     const errors = result.findings.filter((f) => f.severity === 'error').map((f) => `${f.message}${f.line ? ` (line ${f.line})` : ''}`);
     const warnings = result.findings.filter((f) => f.severity === 'warning').map((f) => `${f.message}${f.line ? ` (line ${f.line})` : ''}`);
     check.innerHTML = errors.length
-      ? `<div class="bad">⛔ This bot can't play yet:</div>${errors.map((e) => `<div>· ${escapeHtml(e)}</div>`).join('')}
-         <div class="fix-row"><button id="copy-fix">📋 Copy a fix request for the AI</button> <span class="muted" id="fix-status"></span></div>`
-      : `<div class="good">✓ Passes the static check${warnings.length ? ' (with warnings)' : ''}.</div>${warnings.map((w) => `<div class="muted">⚠ ${escapeHtml(w)}</div>`).join('')}`;
+      ? `<div class="bad">${t("⛔ This bot can't play yet:")}</div>${errors.map((e) => `<div>· ${escapeHtml(e)}</div>`).join('')}
+         <div class="fix-row"><button id="copy-fix">${t('📋 Copy a fix request for the AI')}</button> <span class="muted" id="fix-status"></span></div>`
+      : `<div class="good">${warnings.length ? t('✓ Passes the static check (with warnings).') : t('✓ Passes the static check.')}</div>${warnings.map((w) => `<div class="muted">⚠ ${escapeHtml(w)}</div>`).join('')}`;
     const copyFix = root.querySelector<HTMLButtonElement>('#copy-fix');
     if (copyFix) {
       copyFix.onclick = async () => {
         const text = fixRequest(errors);
-        if (await copyText(text)) root.querySelector('#fix-status')!.textContent = 'Copied. Paste it into the AI chat.';
-        else openCopyFallback('Fix request', text);
+        if (await copyText(text)) root.querySelector('#fix-status')!.textContent = t('Copied. Paste it into the AI chat.');
+        else openCopyFallback(t('Fix request'), text);
       };
     }
   };
