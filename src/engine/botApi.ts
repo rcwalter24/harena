@@ -9,9 +9,9 @@
 //   * Speeds are u/s, times and timers are seconds.
 //   * `players` is indexed by player id: state.players[id].id === id.
 
-export type WeaponName = 'knife' | 'gun' | 'launcher';
+export type WeaponName = 'knife' | 'gun' | 'launcher' | 'laser';
 
-export type ItemType = 'ammo' | 'shield' | 'health' | 'gun' | 'life' | 'launcher' | 'mines';
+export type ItemType = 'ammo' | 'shield' | 'health' | 'gun' | 'life' | 'launcher' | 'mines' | 'laser';
 
 export interface Vec2 {
   x: number;
@@ -93,8 +93,11 @@ export interface PlayerView {
   /** Weapons owned besides the knife (the knife is always owned). */
   hasGun: boolean;
   hasLauncher: boolean;
-  /** Ammunition: gun bullets and launcher grenades. */
-  ammo: { gun: number; launcher: number };
+  hasLaser: boolean;
+  /** Ammunition: gun bullets, launcher grenades and laser shots. */
+  ammo: { gun: number; launcher: number; laser: number };
+  /** Seconds until this player's charging laser fires (0 = not charging). See `lasers` in the state. */
+  laserCharge: number;
   /** Mines carried. */
   mines: number;
   /** Seconds until each action is available again (0 = ready now). */
@@ -102,6 +105,8 @@ export interface PlayerView {
     knife: number;
     gun: number;
     launcher: number;
+    /** Until you can start charging the laser again (it starts after a shot fires). */
+    laser: number;
     mine: number;
     /** Weapon switching: no attacks until this reaches 0. */
     switch: number;
@@ -138,6 +143,23 @@ export interface MineView {
   y: number;
   /** Seconds until it explodes. */
   fuse: number;
+}
+
+/**
+ * A laser being charged: it fires along `path` when `charge` runs out. The direction is locked,
+ * but the shooter can still move, so the whole line moves with them until it fires.
+ */
+export interface LaserView {
+  ownerId: number;
+  /** Seconds until it fires. */
+  charge: number;
+  /** Locked direction, radians. */
+  angle: number;
+  /**
+   * Where the beam would go if it fired now from the shooter's current centre: the start, each
+   * bounce point, then the end. It stops at the first player it touches (not shown here).
+   */
+  path: Vec2[];
 }
 
 /** An explosion that happened during the last tick. */
@@ -185,6 +207,8 @@ export type EventView =
   | { type: 'shot'; playerId: number }
   | { type: 'swing'; playerId: number; hitIds: number[] }
   | { type: 'hit'; attackerId: number; targetId: number; weapon: WeaponName | 'explosion' | 'zone'; damage: number }
+  /** A laser fired: its path (start, bounce points, end) and the player it hit, or null. */
+  | { type: 'laser'; playerId: number; path: Vec2[]; hitId: number | null }
   | { type: 'death'; playerId: number; killerId: number; livesLeft: number }
   | { type: 'eliminated'; playerId: number }
   | { type: 'respawn'; playerId: number; x: number; y: number }
@@ -205,6 +229,8 @@ export interface BotState {
   bullets: BulletView[];
   grenades: GrenadeView[];
   mines: MineView[];
+  /** Lasers being charged (their warning lines). */
+  lasers: LaserView[];
   explosions: ExplosionView[];
   items: ItemView[];
   events: EventView[];

@@ -1,4 +1,5 @@
-import type { ItemType } from '../engine/config.ts';
+import { secondsToTicks, type ItemType } from '../engine/config.ts';
+import { laserSegments } from '../engine/systems/laser.ts';
 import { bushAt, hideLeft, isExposed, isVisibleTo } from '../engine/systems/visibility.ts';
 import { zoneAt, zoneEnabled } from '../engine/systems/zone.ts';
 import type { GameEvent, GameState, PlayerState } from '../engine/types.ts';
@@ -17,6 +18,7 @@ const ITEM_STYLE: Record<ItemType, { fill: string; label: string }> = {
   life: { fill: '#e36fb4', label: '♥' },
   launcher: { fill: '#8fae5a', label: 'L' },
   mines: { fill: '#c0563f', label: 'M' },
+  laser: { fill: '#e27bf0', label: 'Z' },
 };
 
 /** Positions from the previous tick, used to interpolate between ticks. */
@@ -35,7 +37,7 @@ export function captureFrame(state: GameState): FrameCapture {
 }
 
 interface Effect {
-  kind: 'swing' | 'damage' | 'puff' | 'death' | 'explosion';
+  kind: 'swing' | 'damage' | 'puff' | 'death' | 'explosion' | 'laser';
   x: number;
   y: number;
   angle: number;
@@ -46,6 +48,8 @@ interface Effect {
   /** Swing: radius and half-angle of the knife wedge. */
   size?: number;
   spread?: number;
+  /** Laser: x0, y0, x1, y1, … of the beam. */
+  points?: number[];
 }
 
 export interface RenderOptions {
@@ -132,6 +136,9 @@ export class Renderer {
           this.effects.push({ kind: 'damage', x: t.x, y: t.y - 24, angle: 0, text: String(e.damage), color, born: now, life: 800 });
           break;
         }
+        case 'laser':
+          this.effects.push({ kind: 'laser', x: 0, y: 0, angle: 0, text: '', color: playerColor(e.playerId), born: now, life: 550, points: e.path });
+          break;
         case 'explosion':
           this.effects.push({ kind: 'explosion', x: e.x, y: e.y, angle: 0, text: '', color: playerColor(e.ownerId), born: now, life: 450, size: e.radius });
           break;
@@ -189,6 +196,7 @@ export class Renderer {
     const shown = new Set(state.players.filter((p) => !viewer || isVisibleTo(state, viewer, p)).map((p) => p.id));
     if (viewer) this.drawLastSeen(state, viewer.id, shown);
     if (opts.debug) this.drawDebugUnder(state, positions, shown);
+    this.drawLaserWarnings(state, shown);
     for (const p of state.players) {
       if (!p.alive || !shown.has(p.id)) continue;
       // Players inside a bush are drawn faded; a bit less so while revealed by noise or exposure.
@@ -200,6 +208,28 @@ export class Renderer {
     this.drawEffects();
     if (opts.debug) this.drawDebugOver(state, shown);
     ctx.restore();
+  }
+
+  /** Warning lines of charging lasers: dashed, brightening as the shot gets close. */
+  private drawLaserWarnings(state: GameState, shown: Set<number>): void {
+    const { ctx } = this;
+    const total = Math.max(1, secondsToTicks(state.config.laser.chargeTime, state.config));
+    for (const p of state.players) {
+      if (!p.alive || p.laserCharge <= 0 || !shown.has(p.id)) continue;
+      const progress = 1 - p.laserCharge / total;
+      const segments = laserSegments(state, p.x, p.y, p.laserAim);
+      ctx.save();
+      ctx.strokeStyle = playerColor(p.id);
+      ctx.globalAlpha = 0.35 + 0.55 * progress;
+      ctx.lineWidth = 1.5 + 2 * progress;
+      ctx.setLineDash([10, 7]);
+      ctx.lineDashOffset = -this.clock() / 30;
+      ctx.beginPath();
+      ctx.moveTo(segments[0].x0, segments[0].y0);
+      for (const seg of segments) ctx.lineTo(seg.x1, seg.y1);
+      ctx.stroke();
+      ctx.restore();
+    }
   }
 
   /** Fading "?" markers where hidden enemies were last seen (what a bot would know). */
@@ -473,7 +503,20 @@ export class Renderer {
     ctx.save();
     ctx.translate(pos.x, pos.y);
     ctx.rotate(pos.facing);
-    if (p.weapon === 'launcher') {
+    if (p.weapon === 'laser') {
+      ctx.fillStyle = '#3a2b45';
+      ctx.fillRect(r - 4, -4, 22, 8);
+      ctx.strokeStyle = '#e27bf0';
+      ctx.lineWidth = 1;
+      ctx.strokeRect(r - 4, -4, 22, 8);
+      // The emitter glows while charging.
+      const total = Math.max(1, secondsToTicks(state.config.laser.chargeTime, state.config));
+      const glow = p.laserCharge > 0 ? 1 - p.laserCharge / total : 0;
+      ctx.fillStyle = '#f5c6ff';
+      ctx.beginPath();
+      ctx.arc(r + 19, 0, 2.5 + 4 * glow, 0, Math.PI * 2);
+      ctx.fill();
+    } else if (p.weapon === 'launcher') {
       ctx.fillStyle = '#4b5a2e';
       ctx.fillRect(r - 4, -5.5, 20, 11);
       ctx.strokeStyle = '#8fae5a';
@@ -616,6 +659,29 @@ export class Renderer {
           ctx.beginPath();
           ctx.arc(e.x, e.y, radius, 0, Math.PI * 2);
           ctx.stroke();
+          break;
+        }
+        case 'laser': {
+          const pts = e.points ?? [];
+          if (pts.length < 4) break;
+          const trace = () => {
+            ctx.beginPath();
+            ctx.moveTo(pts[0], pts[1]);
+            for (let i = 2; i + 1 < pts.length; i += 2) ctx.lineTo(pts[i], pts[i + 1]);
+            ctx.stroke();
+          };
+          ctx.lineCap = 'round';
+          ctx.lineJoin = 'round';
+          ctx.strokeStyle = e.color;
+          ctx.globalAlpha = 0.45 * (1 - t);
+          ctx.lineWidth = 12 * (1 - t) + 2;
+          trace();
+          ctx.strokeStyle = '#ffffff';
+          ctx.globalAlpha = 1 - t;
+          ctx.lineWidth = 3.5 * (1 - t) + 0.5;
+          trace();
+          ctx.lineCap = 'butt';
+          ctx.lineJoin = 'miter';
           break;
         }
         case 'death':

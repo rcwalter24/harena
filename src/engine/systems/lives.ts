@@ -22,6 +22,7 @@ export function handleDeaths(state: GameState): void {
     const drops: Array<[ItemType, number]> = [];
     if (p.hasGun && p.ammo > 0) drops.push(['gun', p.ammo]);
     if (p.hasLauncher && p.grenades > 0) drops.push(['launcher', p.grenades]);
+    if (p.hasLaser && p.laserShots > 0) drops.push(['laser', p.laserShots]);
     if (p.mines > 0) drops.push(['mines', p.mines]);
     drops.forEach(([type, ammo], i) => {
       const offset = drops.length > 1 ? 14 : 0;
@@ -38,6 +39,9 @@ export function handleDeaths(state: GameState): void {
     p.ammo = 0;
     p.hasLauncher = false;
     p.grenades = 0;
+    p.hasLaser = false;
+    p.laserShots = 0;
+    p.laserCharge = 0;
     p.mines = 0;
     p.weapon = 'knife';
 
@@ -81,6 +85,8 @@ export function placeAtSpawn(state: GameState, p: PlayerState, spawn: SpawnPoint
   p.knifeCooldown = 0;
   p.gunCooldown = 0;
   p.launcherCooldown = 0;
+  p.laserCooldown = 0;
+  p.laserCharge = 0;
   p.mineCooldown = 0;
   p.switchTimer = 0;
   p.respawnTimer = 0;

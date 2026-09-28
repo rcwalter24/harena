@@ -9,7 +9,7 @@ export interface SanitizeResult {
   problems: string[];
 }
 
-const WEAPONS: readonly Weapon[] = ['knife', 'gun', 'launcher'];
+const WEAPONS: readonly Weapon[] = ['knife', 'gun', 'launcher', 'laser'];
 const KNOWN_KEYS = new Set(['move', 'aim', 'attack', 'weapon', 'plantMine']);
 
 const quantize = (v: number, step: number) => Math.round(v / step) * step;
@@ -119,7 +119,7 @@ export function normalizeAction(a: ActionInput): ActionInput {
     moveY: quantize(y, 1e-3) + 0,
     aim: aim === null ? null : aim + 0,
     attack: a.attack === true,
-    weapon: a.weapon === 'knife' || a.weapon === 'gun' || a.weapon === 'launcher' ? a.weapon : null,
+    weapon: a.weapon === 'knife' || a.weapon === 'gun' || a.weapon === 'launcher' || a.weapon === 'laser' ? a.weapon : null,
     plantMine: a.plantMine === true,
   };
 }

@@ -163,6 +163,15 @@ export function validateReplay(raw: unknown): Replay {
   let config = r.config!.zone ? r.config! : { ...r.config!, zone: { ...DEFAULT_CONFIG.zone, damagePerSecond: 0 } };
   if (config.player.accelTime === undefined) config = { ...config, player: { ...config.player, accelTime: 0 } };
   if (config.bushes.hideLimit === undefined) config = { ...config, bushes: { ...config.bushes, hideLimit: 0, rehideTime: 0 } };
+  // Before the laser: none spawn (weight 0, the last type in the item roll) and none can be held.
+  if (config.laser === undefined) {
+    config = {
+      ...config,
+      player: { ...config.player, speedLaser: DEFAULT_CONFIG.player.speedLaser },
+      laser: { ...DEFAULT_CONFIG.laser, pickupAmmo: 0, maxAmmo: 0 },
+      items: { ...config.items, weights: { ...config.items.weights, laser: 0 } },
+    };
+  }
   return { ...r, config, cheats: r.cheats ?? [], checksums: r.checksums ?? [] } as Replay;
 }
 

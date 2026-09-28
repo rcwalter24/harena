@@ -29,11 +29,11 @@ function translatedLiterals(): string[] {
 const INDIRECT = [
   ...readdirSync('maps').map((f) => (JSON.parse(readFileSync(join('maps', f), 'utf8')) as { name: string }).name),
   ...DUMMY_KINDS,
-  'knife', 'gun', 'launcher',
+  'knife', 'gun', 'launcher', 'laser',
   'follows', 'partial', 'broken',
   'reviewed ✓', 'review: warning', 'review: danger', 'blocked', 'review failed', 'changed since review', 'not reviewed', 'checked ✓',
   'Last one standing', 'Everyone eliminated', 'Time limit',
-  ' blew themselves up', ' was caught outside the zone', ' died',
+  ' blew themselves up', ' was caught outside the zone', ' died', ' was hit by their own laser',
 ];
 
 const placeholders = (text: string) => [...text.matchAll(/\{(\w+)\}/g)].map((m) => m[1]).sort();

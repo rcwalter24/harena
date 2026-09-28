@@ -174,8 +174,8 @@ export const ZH: Record<string, string> = {
   keyboard: '键盘',
   'dummy: {kind}': '假人：{kind}',
   'human player': '真人玩家',
-  '<b>WASD</b> move · <b>mouse</b> aim · <b>click/Space</b> attack<br /><b>1/2/3</b> knife/gun/launcher · <b>Q</b> next weapon · <b>E/right click</b> mine<br />':
-    '<b>WASD</b> 移动 · <b>鼠标</b> 瞄准 · <b>左键/空格</b> 攻击<br /><b>1/2/3</b> 匕首/枪/榴弹 · <b>Q</b> 切换武器 · <b>E/右键</b> 地雷<br />',
+  '<b>WASD</b> move · <b>mouse</b> aim · <b>click/Space</b> attack<br /><b>1/2/3/4</b> knife/gun/launcher/laser · <b>Q</b> next weapon · <b>E/right click</b> mine<br />':
+    '<b>WASD</b> 移动 · <b>鼠标</b> 瞄准 · <b>左键/空格</b> 攻击<br /><b>1/2/3/4</b> 匕首/枪/榴弹/激光 · <b>Q</b> 切换武器 · <b>E/右键</b> 地雷<br />',
   '<b>P</b> pause · <b>N</b> step · <b>[ ]</b> speed · <b>R</b> restart · <b>F3</b> debug':
     '<b>P</b> 暂停 · <b>N</b> 单步 · <b>[ ]</b> 调速 · <b>R</b> 重开 · <b>F3</b> 调试',
   '<br />Cheats: <b>G</b> all weapons + ammo + mines · <b>H</b> heal + shield': '<br />作弊：<b>G</b> 全武器 + 弹药 + 地雷 · <b>H</b> 回血 + 护盾',
@@ -195,6 +195,7 @@ export const ZH: Record<string, string> = {
   knife: '匕首',
   gun: '枪',
   launcher: '榴弹',
+  laser: '激光',
   mines: '地雷',
   lives: '生命',
   ' · zone shrinks in {s}s': ' · {s} 秒后开始缩圈',
@@ -204,6 +205,7 @@ export const ZH: Record<string, string> = {
   ' · zone closed': ' · 安全区已消失',
   ' blew themselves up': ' 把自己炸死了',
   ' was caught outside the zone': ' 死在了安全区外',
+  ' was hit by their own laser': ' 被自己的激光打死了',
   ' died': ' 死了',
   ' is eliminated': ' 被淘汰',
 
@@ -230,6 +232,8 @@ export const ZH: Record<string, string> = {
   'gun accuracy': '枪的命中率',
   Knife: '匕首',
   Grenades: '榴弹',
+  Laser: '激光',
+  'laser hits / shots': '激光命中 / 发射数',
   Mines: '地雷',
   Items: '道具',
   Bot: '程序',
@@ -264,6 +268,7 @@ export const ZH: Record<string, string> = {
   ' shot ': ' 击毙了 ',
   ' knifed ': ' 刀杀了 ',
   ' blew up ': ' 炸死了 ',
+  ' lasered ': ' 用激光击杀了 ',
   '{time} time limit': '时间限制 {time}',
   'Everyone eliminated': '全员出局',
   'Time limit': '时间到',

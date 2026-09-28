@@ -24,10 +24,14 @@ export function hashState(state: GameState): string {
     mix(p.x); mix(p.y); mix(p.vx); mix(p.vy); mix(p.facing);
     mix(p.hp); mix(p.shield); mix(p.lives);
     mix(p.alive ? 1 : 0); mix(p.eliminated ? 1 : 0);
-    mix(p.weapon === 'gun' ? 1 : p.weapon === 'launcher' ? 2 : 0); mix(p.hasGun ? 1 : 0); mix(p.ammo);
+    mix(p.weapon === 'gun' ? 1 : p.weapon === 'launcher' ? 2 : p.weapon === 'laser' ? 3 : 0); mix(p.hasGun ? 1 : 0); mix(p.ammo);
     mix(p.hasLauncher ? 1 : 0); mix(p.grenades); mix(p.mines);
     mix(p.knifeCooldown); mix(p.gunCooldown); mix(p.launcherCooldown); mix(p.mineCooldown); mix(p.switchTimer);
     mix(p.invulnerableTimer); mix(p.respawnTimer);
+    // Laser state only counts once there is any, so replays from before the laser still verify.
+    if (p.hasLaser || p.laserShots || p.laserCooldown || p.laserCharge) {
+      mix(p.hasLaser ? 1 : 0); mix(p.laserShots); mix(p.laserCooldown); mix(p.laserCharge); mix(p.laserAim);
+    }
   }
   for (const b of state.bullets) {
     mix(b.id); mix(b.x); mix(b.y); mix(b.vx); mix(b.vy);

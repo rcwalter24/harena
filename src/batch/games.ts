@@ -79,6 +79,8 @@ export interface BotSummary {
   knifeHits: number;
   grenadesFired: number;
   grenadeHits: number;
+  lasersFired: number;
+  laserHits: number;
   minesPlanted: number;
   itemsPicked: number;
   timeouts: number;
@@ -170,6 +172,8 @@ export function summarize(games: GameResult[]): BotSummary[] {
       knifeHits: sum(seats, (s) => s.stats.knifeHits),
       grenadesFired: sum(seats, (s) => s.stats.grenadesFired),
       grenadeHits: sum(seats, (s) => s.stats.grenadeHits),
+      lasersFired: sum(seats, (s) => s.stats.lasersFired ?? 0),
+      laserHits: sum(seats, (s) => s.stats.laserHits ?? 0),
       minesPlanted: sum(seats, (s) => s.stats.minesPlanted),
       itemsPicked: sum(seats, (s) => s.stats.itemsPicked),
       timeouts: sum(seats, (s) => s.botStats.timeouts),

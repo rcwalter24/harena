@@ -6,9 +6,11 @@
  * angles in degrees where noted (the engine converts to radians / ticks).
  */
 
-export type ItemType = 'ammo' | 'shield' | 'health' | 'gun' | 'life' | 'launcher' | 'mines';
+export type ItemType = 'ammo' | 'shield' | 'health' | 'gun' | 'life' | 'launcher' | 'mines' | 'laser';
 
-export const ITEM_TYPES: readonly ItemType[] = ['ammo', 'shield', 'health', 'gun', 'life', 'launcher', 'mines'];
+// New types go last: the weighted item roll walks this list, so a type with weight 0 at the end
+// leaves older replays' rolls unchanged.
+export const ITEM_TYPES: readonly ItemType[] = ['ammo', 'shield', 'health', 'gun', 'life', 'launcher', 'mines', 'laser'];
 
 export interface GameConfig {
   tickRate: number;
@@ -17,6 +19,7 @@ export interface GameConfig {
     speedKnife: number;
     speedGun: number;
     speedLauncher: number;
+    speedLaser: number;
     accelTime: number;
     turnRateDegrees: number;
     maxHp: number;
@@ -51,6 +54,16 @@ export interface GameConfig {
     blastRadius: number;
     centerDamage: number;
     edgeDamage: number;
+  };
+  laser: {
+    chargeTime: number;
+    damage: number;
+    cooldown: number;
+    range: number;
+    bounces: number;
+    beamRadius: number;
+    pickupAmmo: number;
+    maxAmmo: number;
   };
   mines: {
     fuse: number;
@@ -117,6 +130,7 @@ export const DEFAULT_CONFIG: GameConfig = {
     speedKnife: 210,
     speedGun: 190,
     speedLauncher: 180,
+    speedLaser: 190,
     accelTime: 0.3,
     turnRateDegrees: 540,
     maxHp: 100,
@@ -151,6 +165,16 @@ export const DEFAULT_CONFIG: GameConfig = {
     blastRadius: 80,
     centerDamage: 200,
     edgeDamage: 20,
+  },
+  laser: {
+    chargeTime: 0.75,
+    damage: 60,
+    cooldown: 1.5,
+    range: 2000,
+    bounces: 1,
+    beamRadius: 3,
+    pickupAmmo: 3,
+    maxAmmo: 6,
   },
   mines: {
     fuse: 2.5,
@@ -193,7 +217,7 @@ export const DEFAULT_CONFIG: GameConfig = {
     shieldAmount: 50,
     healthAmount: 40,
     lifeAmount: 1,
-    weights: { ammo: 30, shield: 25, health: 25, gun: 12, life: 8, launcher: 20, mines: 10 },
+    weights: { ammo: 26, shield: 18, health: 18, gun: 10, life: 7, launcher: 10, mines: 15, laser: 12 },
   },
   match: {
     defaultTimeLimit: 180,
@@ -222,6 +246,7 @@ export const CONFIG_DOCS: Record<string, ConfigDoc> = {
   'player.speedKnife': { unit: 'u/s', description: 'Maximum movement speed while holding the knife.' },
   'player.speedGun': { unit: 'u/s', description: 'Maximum movement speed while holding the gun.' },
   'player.speedLauncher': { unit: 'u/s', description: 'Maximum movement speed while holding the grenade launcher.' },
+  'player.speedLaser': { unit: 'u/s', description: 'Maximum movement speed while holding the laser (also while charging it).' },
   'player.accelTime': { unit: 's', description: 'Inertia: time to go from standing to top speed (or back). Velocity changes by at most topSpeed / accelTime per second (0 = instant).' },
   'player.turnRateDegrees': { unit: 'deg/s', description: 'Maximum rate at which facing rotates toward the requested aim angle.' },
   'player.maxHp': { unit: 'hp', description: 'Health at spawn and the health cap.' },
@@ -250,6 +275,14 @@ export const CONFIG_DOCS: Record<string, ConfigDoc> = {
   'launcher.blastRadius': { unit: 'u', description: 'Grenade explosion radius (measured to the edge of a target).' },
   'launcher.centerDamage': { unit: 'hp', description: 'Grenade damage at the centre of the explosion.' },
   'launcher.edgeDamage': { unit: 'hp', description: 'Grenade damage at the edge of the blast radius (linear falloff in between).' },
+  'laser.chargeTime': { unit: 's', description: 'Warning time: the beam fires this long after you start charging (everyone sees the warning line meanwhile).' },
+  'laser.damage': { unit: 'hp', description: 'Damage of a laser hit.' },
+  'laser.cooldown': { unit: 's', description: 'After a laser fires, you cannot start charging again for this long.' },
+  'laser.range': { unit: 'u', description: 'Total beam length, including the part after a bounce.' },
+  'laser.bounces': { unit: 'bounces', description: 'How many times the beam reflects off walls (and the map edge) before it ends.' },
+  'laser.beamRadius': { unit: 'u', description: "Beam half-width: it hits a player whose centre is within player radius + this of the beam's line." },
+  'laser.pickupAmmo': { unit: 'shots', description: 'Laser shots gained from a laser item.' },
+  'laser.maxAmmo': { unit: 'shots', description: 'Laser shot cap.' },
   'mines.fuse': { unit: 's', description: 'A planted mine explodes this long after being planted.' },
   'mines.plantCooldown': { unit: 's', description: 'Minimum time between planting two mines.' },
   'mines.pickupAmount': { unit: 'mines', description: 'Mines gained from a mines item.' },
@@ -287,6 +320,7 @@ export const CONFIG_DOCS: Record<string, ConfigDoc> = {
   'items.weights.life': { unit: 'weight', description: 'Relative spawn weight of extra-life items.' },
   'items.weights.launcher': { unit: 'weight', description: 'Relative spawn weight of grenade launcher items.' },
   'items.weights.mines': { unit: 'weight', description: 'Relative spawn weight of mines items.' },
+  'items.weights.laser': { unit: 'weight', description: 'Relative spawn weight of laser items.' },
   'match.defaultTimeLimit': { unit: 's', description: 'Default match length (the match setup may change it).' },
   'match.minPlayers': { unit: 'players', description: 'Minimum players in a match.' },
   'match.maxPlayers': { unit: 'players', description: 'Maximum players in a match.' },

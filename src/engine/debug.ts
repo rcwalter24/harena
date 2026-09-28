@@ -6,12 +6,17 @@ export type CheatKind = 'arm' | 'heal';
 export function applyCheat(state: GameState, playerId: number, kind: CheatKind): boolean {
   const p = state.players[playerId];
   if (!p || !p.alive) return false;
-  const { player, gun, launcher, mines } = state.config;
+  const { player, gun, launcher, laser, mines } = state.config;
   if (kind === 'arm') {
     p.hasGun = true;
     p.ammo = gun.maxAmmo;
     p.hasLauncher = true;
     p.grenades = launcher.maxAmmo;
+    // Replays from before the laser load with laser.maxAmmo 0: no laser, same state as then.
+    if (laser.maxAmmo > 0) {
+      p.hasLaser = true;
+      p.laserShots = laser.maxAmmo;
+    }
     p.mines = mines.maxCarry;
   } else {
     p.hp = player.maxHp;

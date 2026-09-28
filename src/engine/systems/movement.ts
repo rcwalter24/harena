@@ -2,6 +2,7 @@ import { secondsToTicks } from '../config.ts';
 import { angleDiff, clamp, DEG, length, normalizeAngle } from '../dmath.ts';
 import { resolveCircleWalls } from '../geometry.ts';
 import type { ActionInput, GameState } from '../types.ts';
+import { cancelLaserCharge } from './laser.ts';
 
 export function applyWeaponSwitches(state: GameState, actions: readonly ActionInput[]): void {
   const switchTicks = secondsToTicks(state.config.player.switchTime, state.config);
@@ -11,6 +12,8 @@ export function applyWeaponSwitches(state: GameState, actions: readonly ActionIn
     if (!want || want === p.weapon) continue;
     if (want === 'gun' && !p.hasGun) continue;
     if (want === 'launcher' && !p.hasLauncher) continue;
+    if (want === 'laser' && !p.hasLaser) continue;
+    cancelLaserCharge(p);
     p.weapon = want;
     p.switchTimer = switchTicks;
     state.events.push({ type: 'switch', tick: state.tick, playerId: p.id, weapon: want });
@@ -22,7 +25,8 @@ export function applyTurning(state: GameState, actions: readonly ActionInput[]):
   for (const p of state.players) {
     if (!p.alive) continue;
     const aim = actions[p.id].aim;
-    if (aim === null) continue;
+    // A charging laser locks its direction, and the holder's facing with it.
+    if (aim === null || p.laserCharge > 0) continue;
     const diff = angleDiff(aim, p.facing);
     p.facing = normalizeAngle(p.facing + clamp(diff, -maxTurn, maxTurn));
   }
@@ -45,7 +49,8 @@ export function applyMovement(state: GameState, actions: readonly ActionInput[])
       my /= len;
     }
     const speed = p.weapon === 'gun' ? config.player.speedGun
-      : p.weapon === 'launcher' ? config.player.speedLauncher : config.player.speedKnife;
+      : p.weapon === 'launcher' ? config.player.speedLauncher
+        : p.weapon === 'laser' ? config.player.speedLaser : config.player.speedKnife;
     // Inertia: `move` asks for a velocity, and the actual velocity (last tick's, so walls
     // and collisions count) moves toward it by at most speed / accelTime per second.
     let vx = mx * speed;

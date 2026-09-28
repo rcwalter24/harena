@@ -39,10 +39,11 @@ export class PlayerCards {
         : !p.alive
           ? t('respawn in {s}s', { s: (p.respawnTimer / state.config.tickRate).toFixed(1) })
           : p.invulnerableTimer > 0 ? t('invulnerable') : '';
-      const label = (w: 'knife' | 'gun' | 'launcher') => (p.weapon === w ? `<b>${t(w)}</b>` : t(w));
+      const label = (w: 'knife' | 'gun' | 'launcher' | 'laser') => (p.weapon === w ? `<b>${t(w)}</b>` : t(w));
       const owned = [
         p.hasGun ? `${label('gun')} ${p.ammo}` : '',
         p.hasLauncher ? `${label('launcher')} ${p.grenades}` : '',
+        p.hasLaser ? `${label('laser')} ${p.laserShots}` : '',
         p.mines > 0 ? t('mines {n}', { n: p.mines }) : '',
       ].filter(Boolean);
       const weapon = [label('knife'), ...owned].join(' · ');
@@ -95,10 +96,11 @@ export class KillFeed {
       };
       if (e.type === 'death') {
         if (e.killerId >= 0) {
-          const icon = e.weapon === 'gun' ? ' ⁍ ' : e.weapon === 'knife' ? ' 🗡 ' : ' 💥 ';
+          const icon = e.weapon === 'gun' ? ' ⁍ ' : e.weapon === 'knife' ? ' 🗡 ' : e.weapon === 'laser' ? ' ⚡ ' : ' 💥 ';
           row.append(name(e.killerId), el('span', 'how', icon), name(e.playerId));
         } else {
-          const how = e.weapon === 'launcher' || e.weapon === 'mine' ? ' blew themselves up' : e.weapon === 'zone' ? ' was caught outside the zone' : ' died';
+          const how = e.weapon === 'launcher' || e.weapon === 'mine' ? ' blew themselves up' : e.weapon === 'laser' ? ' was hit by their own laser'
+            : e.weapon === 'zone' ? ' was caught outside the zone' : ' died';
           row.append(name(e.playerId), el('span', 'how', t(how)));
         }
       } else {

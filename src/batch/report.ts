@@ -23,7 +23,7 @@ export interface ReportInfo {
 
 export function formatReport(games: GameResult[], bots: BotSummary[], info: ReportInfo): string {
   const n = games.length;
-  const header = ['bot', 'seats', 'wins', 'win%', 'draws', 'avg rank', 'K', 'D', 'K/D', 'dmg/game', 'gun acc', 'grenades', 'mines', 'items', 'fails', 'avg ms', 'max ms'];
+  const header = ['bot', 'seats', 'wins', 'win%', 'draws', 'avg rank', 'K', 'D', 'K/D', 'dmg/game', 'gun acc', 'grenades', 'lasers', 'mines', 'items', 'fails', 'avg ms', 'max ms'];
   const rows = bots.map((b) => [
     b.bot,
     String(b.seats),
@@ -37,6 +37,7 @@ export function formatReport(games: GameResult[], bots: BotSummary[], info: Repo
     (b.damageDealt / b.seats).toFixed(0),
     pct(b.accuracy),
     `${b.grenadeHits}/${b.grenadesFired}`,
+    `${b.laserHits}/${b.lasersFired}`,
     String(b.minesPlanted),
     (b.itemsPicked / b.seats).toFixed(1),
     b.timeouts + b.errors + b.invalid + b.restarts > 0

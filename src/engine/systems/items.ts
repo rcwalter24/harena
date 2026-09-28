@@ -6,9 +6,10 @@ import { insideZone, zoneAt, zoneShrinking } from './zone.ts';
 
 /** Would picking up this item do anything for the player? Useless items are left on the ground. */
 export function canUseItem(state: GameState, p: PlayerState, type: ItemType): boolean {
-  const { player, gun, launcher, mines } = state.config;
+  const { player, gun, launcher, laser, mines } = state.config;
   switch (type) {
     case 'launcher': return !p.hasLauncher || p.grenades < launcher.maxAmmo;
+    case 'laser': return !p.hasLaser || p.laserShots < laser.maxAmmo;
     case 'mines': return p.mines < mines.maxCarry;
     case 'gun': return !p.hasGun || p.ammo < gun.maxAmmo;
     case 'ammo': return p.hasGun && p.ammo < gun.maxAmmo;
@@ -19,8 +20,12 @@ export function canUseItem(state: GameState, p: PlayerState, type: ItemType): bo
 }
 
 function applyItem(state: GameState, p: PlayerState, item: Item): void {
-  const { player, gun, items, launcher, mines } = state.config;
+  const { player, gun, items, launcher, laser, mines } = state.config;
   switch (item.type) {
+    case 'laser':
+      p.hasLaser = true;
+      p.laserShots = Math.min(laser.maxAmmo, p.laserShots + item.ammo);
+      break;
     case 'launcher':
       p.hasLauncher = true;
       p.grenades = Math.min(launcher.maxAmmo, p.grenades + item.ammo);
@@ -99,8 +104,9 @@ export function refillGunPads(state: GameState): void {
 
 /** Ammo (or count) a freshly spawned item of this type carries. */
 export function defaultItemAmmo(state: GameState, type: ItemType): number {
-  const { gun, launcher, mines } = state.config;
-  return type === 'gun' ? gun.pickupAmmo : type === 'launcher' ? launcher.pickupAmmo : type === 'mines' ? mines.pickupAmount : 0;
+  const { gun, launcher, laser, mines } = state.config;
+  return type === 'gun' ? gun.pickupAmmo : type === 'launcher' ? launcher.pickupAmmo : type === 'laser' ? laser.pickupAmmo
+    : type === 'mines' ? mines.pickupAmount : 0;
 }
 
 /**

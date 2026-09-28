@@ -2,6 +2,7 @@ import { DEFAULT_CONFIG, ITEM_TYPES, secondsToTicks, type GameConfig, type ItemT
 import { deriveRng } from './rng.ts';
 import { applyAttacks, updateBullets } from './systems/combat.ts';
 import { dueMines, plantMines, resolveExplosions, updateGrenades } from './systems/explosives.ts';
+import { updateLasers } from './systems/laser.ts';
 import { handlePickups, refillGunPads, updateItemSpawner } from './systems/items.ts';
 import { handleDeaths, handleRespawns, placeAtSpawn } from './systems/lives.ts';
 import { applyMovement, applyTurning, applyWeaponSwitches } from './systems/movement.ts';
@@ -24,7 +25,7 @@ function emptyStats(): PlayerState['stats'] {
   for (const t of ITEM_TYPES) itemsByType[t] = 0;
   return {
     kills: 0, deaths: 0, damageDealt: 0, damageTaken: 0, shotsFired: 0, shotsHit: 0,
-    knifeSwings: 0, knifeHits: 0, grenadesFired: 0, grenadeHits: 0, minesPlanted: 0, itemsPicked: 0, itemsByType,
+    knifeSwings: 0, knifeHits: 0, grenadesFired: 0, grenadeHits: 0, lasersFired: 0, laserHits: 0, minesPlanted: 0, itemsPicked: 0, itemsByType,
   };
 }
 
@@ -79,10 +80,15 @@ export function createGame(opts: GameOptions): GameState {
       ammo: 0,
       hasLauncher: false,
       grenades: 0,
+      hasLaser: false,
+      laserShots: 0,
       mines: 0,
       knifeCooldown: 0,
       gunCooldown: 0,
       launcherCooldown: 0,
+      laserCooldown: 0,
+      laserCharge: 0,
+      laserAim: 0,
       mineCooldown: 0,
       switchTimer: 0,
       invulnerableTimer: 0,
@@ -112,6 +118,7 @@ function tickTimers(state: GameState): void {
       p.knifeCooldown = dec(p.knifeCooldown);
       p.gunCooldown = dec(p.gunCooldown);
       p.launcherCooldown = dec(p.launcherCooldown);
+      p.laserCooldown = dec(p.laserCooldown);
       p.mineCooldown = dec(p.mineCooldown);
       p.switchTimer = dec(p.switchTimer);
       p.invulnerableTimer = dec(p.invulnerableTimer);
@@ -132,8 +139,9 @@ function tickTimers(state: GameState): void {
  * input (missing entries count as idle). Mutates `state` and returns the events
  * produced during this tick (also stored in state.events).
  *
- * Order: weapon switches → turning → movement & collisions → attacks & mine
- * planting → bullets → grenades → due mines → explosions (with chain reactions) →
+ * Order: weapon switches → turning → movement & collisions → attacks (laser charges start)
+ * & mine planting → bullets → grenades → lasers (charges count down; finished ones fire) →
+ * due mines → explosions (with chain reactions) →
  * zone damage → deaths → pickups → respawns, gun pads & item spawns → timers & bush
  * hiding time → match end.
  */
@@ -150,6 +158,7 @@ export function step(state: GameState, actions: readonly (ActionInput | undefine
   plantMines(state, acts);
   updateBullets(state);
   const blasts = updateGrenades(state);
+  updateLasers(state);
   blasts.push(...dueMines(state));
   resolveExplosions(state, blasts);
   applyZoneDamage(state);

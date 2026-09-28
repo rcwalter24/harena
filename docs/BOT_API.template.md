@@ -56,9 +56,9 @@ export function decide(state) {
   Eliminated players rank below all survivors, and a later elimination ranks higher.
   Exact ties share a rank.
 - **The safe zone shrinks.** From {{zone.shrinkStart}} s the playable area closes in on the map centre, and
-  standing outside it hurts ([§5.12](#512-safe-zone)). Hiding or waiting out the clock does not work.
+  standing outside it hurts ([§5.13](#513-safe-zone)). Hiding or waiting out the clock does not work.
 - You see the whole map and everything on it. The only exception is enemies hiding in
-  **bushes** ([§5.11](#511-bushes)).
+  **bushes** ([§5.12](#512-bushes)).
 
 ---
 
@@ -85,14 +85,16 @@ fixed order:
 1. **Weapon switches**.
 2. **Turning**: facing rotates toward your `aim`.
 3. **Movement**, then walls and player–player collisions.
-4. **Attacks**: knife swings hit instantly, and new bullets/grenades start at your centre.
-5. **Projectiles** move along their path (bullets, then grenades), hitting walls or players.
+4. **Attacks**: knife swings hit instantly, new bullets/grenades start at your centre, and a laser starts
+   charging.
+5. **Projectiles** move along their path (bullets, then grenades), hitting walls or players. Then
+   **lasers** whose charge ran out fire.
 6. **Mines** whose fuse ran out explode, then **explosions** deal damage.
 7. **Zone damage** (on whole seconds) to players outside the safe zone.
 8. **Deaths**: lives are lost, gear is dropped, kills are credited.
 9. **Pickups**.
 10. **Respawns**, and gun pads refill.
-11. **Cooldowns** count down, and time spent in bushes is updated (see [§5.11](#511-bushes)).
+11. **Cooldowns** count down, and time spent in bushes is updated (see [§5.12](#512-bushes)).
 
 Consequences:
 - Your action always reacts to state that is one tick old.
@@ -158,7 +160,26 @@ Consequences:
   {{launcher.edgeDamage}} at the edge. Distance is measured from the blast centre to the nearest point of the target
   (centre distance − {{player.radius}}).
 
-### 5.6 Mines
+### 5.6 Laser
+- Picked up as a `laser` item, which gives {{laser.pickupAmmo}} shots (max {{laser.maxAmmo}}).
+- **Attacking starts a charge.** The beam's direction is locked to your facing at that moment, and
+  your facing stays locked until it fires. You can keep moving (top speed {{player.speedLaser}} u/s). After
+  **{{laser.chargeTime}} s** the beam fires from wherever your centre is then. Starting a charge ends
+  invulnerability, and while charging you are revealed like after an attack (see §5.12).
+- **Everyone sees it coming.** `state.lasers` lists every charging laser with `charge` (seconds until it
+  fires) and `path`: where the beam would go if it fired now, from the shooter's current centre. Your own
+  and everyone's countdown is also `players[i].laserCharge`.
+- The beam is **instant**. It goes straight, **reflects off walls and the map edge {{laser.bounces}} time(s)** (angle
+  in = angle out), and ends after {{laser.range}} u in total. It stops at the **first player it touches** (a
+  player whose centre is within player radius + {{laser.beamRadius}} u of the beam) and deals **{{laser.damage}}** damage.
+  Before its bounce the beam passes through you, but **the reflected part can hit you** (a suicide if it kills you).
+- A shot is used when the beam fires; then the laser has a {{laser.cooldown}} s cooldown (`cooldowns.laser`). Switching
+  weapons or dying cancels a charge and keeps the shot.
+- In `state.events`, laser damage shows up as `weapon: 'laser'`, and every shot as a `laser` event with its
+  path and the player it hit.
+- To dodge, get off the line early: with inertia you need a few ticks to change direction.
+
+### 5.7 Mines
 - Picked up as a `mines` item, which gives +{{mines.pickupAmount}} (carry at most {{mines.maxCarry}}).
 - `plantMine: true` plants one at your position, whatever weapon you hold, even while switching.
   Cooldown is {{mines.plantCooldown}} s.
@@ -167,7 +188,7 @@ Consequences:
 - An explosion **immediately detonates every other mine in its radius** (chain reaction).
 - Mines don't block movement. They outlive their owner, and kills still go to the owner.
 
-### 5.7 Explosions
+### 5.8 Explosions
 - Walls block explosions: a player takes no damage if a wall is on the straight line
   from the blast centre to their centre.
 - **Your own explosions hurt you** (×{{explosions.selfDamageFactor}} damage). Dying to your own explosive is a suicide,
@@ -176,21 +197,21 @@ Consequences:
 - In `state.events`, explosion damage shows up as `weapon: 'explosion'`. `state.explosions` lists
   every blast from the previous tick.
 
-### 5.8 Weapon switching
-- Return `weapon: 'knife' | 'gun' | 'launcher'` to switch; you must own the weapon. The new weapon's
+### 5.9 Weapon switching
+- Return `weapon: 'knife' | 'gun' | 'launcher' | 'laser'` to switch; you must own the weapon. The new weapon's
   speed applies at once, but you **cannot attack for {{player.switchTime}} s** (`cooldowns.switch`).
 - Requesting the weapon you already hold does nothing, so it is safe to send every tick.
 
-### 5.9 Death, respawn, kills
-- At 0 hp you lose a life. Your gun (if it has ammo) and your launcher (if it has grenades)
-  drop where you died as items that keep their ammo. Carried mines drop as a `mines` item.
+### 5.10 Death, respawn, kills
+- At 0 hp you lose a life. Your gun (if it has ammo), your launcher (if it has grenades) and your
+  laser (if it has shots) drop where you died as items that keep their ammo. Carried mines drop as a `mines` item.
 - You respawn after {{respawn.delay}} s with full hp, {{player.startShield}} shield and only the knife. The spawn point is
   random among spawn points at least {{respawn.safeDistance}} u from every living enemy, or the farthest one if
   none qualifies. Once the safe zone shrinks, only spawn points inside it count; if none is left,
   you respawn at a free spot inside the zone, as far from enemies as possible.
 - A kill is credited to the last *other* player who damaged you in that life.
 
-### 5.10 Items
+### 5.11 Items
 Items are circles of radius {{items.radius}}. You pick one up when your centre is within
 **{{derived.pickupReach}} u** of it (player radius + item radius). If several players touch it, the closest one gets it.
 **Items you can't use stay on the ground**: full hp, full shield, max ammo, and so on.
@@ -203,13 +224,14 @@ Items are circles of radius {{items.radius}}. You pick one up when your centre i
 | `ammo` | +{{items.ammoAmount}} gun ammo | you have a gun and ammo < {{gun.maxAmmo}} |
 | `gun` | gun + its ammo | no gun yet, or gun ammo < {{gun.maxAmmo}} |
 | `launcher` | launcher + its grenades | no launcher yet, or grenades < {{launcher.maxAmmo}} |
+| `laser` | laser + its shots | no laser yet, or shots < {{laser.maxAmmo}} |
 | `mines` | +{{mines.pickupAmount}} mines | mines < {{mines.maxCarry}} |
 
 Random items appear every {{items.spawnInterval}} s, starting {{items.firstSpawnDelay}} s into the match, at random free spots
 (inside the safe zone once it shrinks). Spawning pauses while {{items.maxOnMap}} spawned items are on the map.
 Spawn weights: {{derived.itemWeights}}.
 
-### 5.11 Bushes
+### 5.12 Bushes
 - Bushes are rectangles in `info.map.bushes`. They block nothing: players, bullets, grenades and
   explosions pass through them.
 - A player whose **centre** is inside a bush is **hidden** from an enemy, unless:
@@ -228,7 +250,7 @@ Spawn weights: {{derived.itemWeights}}.
   shows where the shots come from.
 - You always see yourself.
 
-### 5.12 Safe zone
+### 5.13 Safe zone
 - The safe zone is a circle around the **map centre**, described every tick in `state.zone`.
   Its radius follows a fixed schedule:
   1. Until {{zone.shrinkStart}} s it covers the whole map.
@@ -239,7 +261,7 @@ Spawn weights: {{derived.itemWeights}}.
 - At every whole second of match time, each living player whose **centre** is outside the zone
   takes **{{zone.damagePerSecond}} damage**. Shield absorbs it first, and invulnerability blocks it.
 - Zone damage counts as noise, so it reveals a player hiding in a bush outside the zone
-  ([§5.11](#511-bushes)).
+  ([§5.12](#512-bushes)).
 - Dying to the zone gives nobody the kill. In `state.events` zone damage is a `hit` with
   `weapon: 'zone'` and `attackerId` equal to the damaged player's own id.
 - A point is inside if `(x - zone.x)² + (y - zone.y)² <= radius²`. The countdowns
@@ -281,7 +303,7 @@ return {
 
 - All fields are optional. `null`, `undefined` or `{}` means stand still, keep facing, and don't attack.
 - Every field must have the right type: `move` must be `{x, y}` with finite numbers, `aim`
-  a finite number, `attack`/`plantMine` booleans, and `weapon` one of the three names. **If any field
+  a finite number, `attack`/`plantMine` booleans, and `weapon` one of the four names. **If any field
   is malformed, the whole action is rejected** and counts as a failure (see §8).
 - Unknown extra fields are ignored. Speed, rate of fire and damage come only from the
   rules: out-of-range numbers are clamped, never trusted.

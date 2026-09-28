@@ -1,4 +1,5 @@
 import type { BotState, EventView, InitInfo, PlayerView, ZoneView } from './botApi.ts';
+import { laserSegments, segmentPoints } from './systems/laser.ts';
 import { hideLeft, isVisibleTo } from './systems/visibility.ts';
 import { zoneAt, zoneEnabled } from './systems/zone.ts';
 import type { GameState, PlayerState } from './types.ts';
@@ -27,16 +28,25 @@ export function playerView(state: GameState, p: PlayerState): PlayerView {
     weapon: p.weapon,
     hasGun: p.hasGun,
     hasLauncher: p.hasLauncher,
-    ammo: { gun: p.ammo, launcher: p.grenades },
+    hasLaser: p.hasLaser,
+    ammo: { gun: p.ammo, launcher: p.grenades, laser: p.laserShots },
+    laserCharge: p.alive ? t(p.laserCharge) : 0,
     mines: p.mines,
     cooldowns: {
       knife: t(p.knifeCooldown),
       gun: t(p.gunCooldown),
       launcher: t(p.launcherCooldown),
+      laser: t(p.laserCooldown),
       mine: t(p.mineCooldown),
       switch: t(p.switchTimer),
     },
   };
+}
+
+function toPoints(flat: readonly number[]): { x: number; y: number }[] {
+  const pts = [];
+  for (let i = 0; i + 1 < flat.length; i += 2) pts.push({ x: flat[i], y: flat[i + 1] });
+  return pts;
 }
 
 function eventViews(state: GameState): EventView[] {
@@ -46,10 +56,11 @@ function eventViews(state: GameState): EventView[] {
       case 'shot': out.push({ type: 'shot', playerId: e.playerId }); break;
       case 'swing': out.push({ type: 'swing', playerId: e.playerId, hitIds: [...e.hitIds] }); break;
       case 'hit': {
-        const weapon = e.weapon === 'knife' || e.weapon === 'gun' || e.weapon === 'zone' ? e.weapon : 'explosion';
+        const weapon = e.weapon === 'knife' || e.weapon === 'gun' || e.weapon === 'laser' || e.weapon === 'zone' ? e.weapon : 'explosion';
         out.push({ type: 'hit', attackerId: e.attackerId, targetId: e.targetId, weapon, damage: e.damage });
         break;
       }
+      case 'laser': out.push({ type: 'laser', playerId: e.playerId, path: toPoints(e.path), hitId: e.hitId >= 0 ? e.hitId : null }); break;
       case 'death': out.push({ type: 'death', playerId: e.playerId, killerId: e.killerId, livesLeft: e.livesLeft }); break;
       case 'eliminated': out.push({ type: 'eliminated', playerId: e.playerId }); break;
       case 'respawn': out.push({ type: 'respawn', playerId: e.playerId, x: e.x, y: e.y }); break;
@@ -79,6 +90,12 @@ export function buildBotState(state: GameState): Omit<BotState, 'self'> {
       radius: config.launcher.grenadeRadius, remainingRange: Math.max(0, config.launcher.range - g.traveled),
     })),
     mines: state.mines.map((m) => ({ id: m.id, ownerId: m.ownerId, x: m.x, y: m.y, fuse: m.fuseTimer / config.tickRate })),
+    lasers: state.players.filter((p) => p.alive && p.laserCharge > 0).map((p) => ({
+      ownerId: p.id,
+      charge: p.laserCharge / config.tickRate,
+      angle: p.laserAim,
+      path: toPoints(segmentPoints(laserSegments(state, p.x, p.y, p.laserAim))),
+    })),
     explosions: state.explosions.map((e) => ({ ownerId: e.ownerId, source: e.source, x: e.x, y: e.y, radius: e.radius })),
     items: state.items.map((it) => ({ id: it.id, type: it.type, x: it.x, y: it.y })),
     events: eventViews(state),

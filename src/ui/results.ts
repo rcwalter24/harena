@@ -69,6 +69,7 @@ export function showResults(host: HTMLElement, data: ResultsData, actions: Resul
       <td class="num" title="${t('{hit} / {fired} bullets', { hit: s.shotsHit, fired: s.shotsFired })}">${pct(s.shotsHit, s.shotsFired)}</td>
       <td class="num" title="${t('swings that hit / swings')}">${s.knifeHits}/${s.knifeSwings}</td>
       <td class="num" title="${t('grenades that hurt an enemy / fired')}">${s.grenadeHits}/${s.grenadesFired}</td>
+      <td class="num" title="${t('laser hits / shots')}">${s.laserHits}/${s.lasersFired}</td>
       <td class="num">${s.minesPlanted}</td>
       <td class="num">${itemsCell(p)}</td>
       <td>${botHealth(data.botStats[p.id])}</td>
@@ -89,7 +90,7 @@ export function showResults(host: HTMLElement, data: ResultsData, actions: Resul
           <thead><tr>
             <th>#</th><th>${t('Player')}</th><th>${t('Result')}</th><th title="${t('kills')}">${t('K')}</th><th title="${t('deaths')}">${t('D')}</th>
             <th title="${t('damage dealt')}">${t('Dealt')}</th><th title="${t('damage taken')}">${t('Taken')}</th><th title="${t('gun accuracy')}">${t('Gun acc.')}</th>
-            <th>${t('Knife')}</th><th>${t('Grenades')}</th><th>${t('Mines')}</th><th>${t('Items')}</th><th title="${t('bot sandbox: average decide() time or failures')}">${t('Bot')}</th>
+            <th>${t('Knife')}</th><th>${t('Grenades')}</th><th>${t('Laser')}</th><th>${t('Mines')}</th><th>${t('Items')}</th><th title="${t('bot sandbox: average decide() time or failures')}">${t('Bot')}</th>
           </tr></thead>
           <tbody>${rows}</tbody>
         </table>

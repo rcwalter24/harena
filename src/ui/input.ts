@@ -5,7 +5,7 @@ import type { Renderer } from '../render/renderer.ts';
 /**
  * Keyboard + mouse player for testing rule feel.
  * WASD / arrows: move · mouse: aim · left click or Space: attack ·
- * 1: knife · 2: gun · 3: launcher · Q: next owned weapon · E or right click: plant mine.
+ * 1: knife · 2: gun · 3: launcher · 4: laser · Q: next owned weapon · E or right click: plant mine.
  */
 export class HumanController implements Controller {
   readonly label = 'human';
@@ -65,6 +65,7 @@ export class HumanController implements Controller {
       if (e.code === 'Digit1') this.pendingWeapon = 'knife';
       if (e.code === 'Digit2') this.pendingWeapon = 'gun';
       if (e.code === 'Digit3') this.pendingWeapon = 'launcher';
+      if (e.code === 'Digit4') this.pendingWeapon = 'laser';
       if (e.code === 'KeyE' && !e.repeat) this.plantMine = true;
       if (e.code === 'Space' && !e.repeat) this.clicked = true;
       if (e.code === 'KeyQ' && !e.repeat) this.toggleWeapon = true;
@@ -99,6 +100,7 @@ export class HumanController implements Controller {
       const owned: Weapon[] = ['knife'];
       if (self.hasGun) owned.push('gun');
       if (self.hasLauncher) owned.push('launcher');
+      if (self.hasLaser) owned.push('laser');
       weapon = owned[(owned.indexOf(self.weapon) + 1) % owned.length];
     }
     const plantMine = this.plantMine;

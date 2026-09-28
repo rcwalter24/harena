@@ -2,7 +2,7 @@ import type { GameConfig, ItemType } from './config.ts';
 import { boundaryWalls, type Rect } from './geometry.ts';
 import type { Rng } from './rng.ts';
 
-export type Weapon = 'knife' | 'gun' | 'launcher';
+export type Weapon = 'knife' | 'gun' | 'launcher' | 'laser';
 
 /** What dealt damage: a weapon, or a mine. */
 export type DamageSource = Weapon | 'mine' | 'zone';
@@ -72,6 +72,9 @@ export interface PlayerStats {
   grenadesFired: number;
   /** Grenades whose explosion damaged at least one enemy. */
   grenadeHits: number;
+  lasersFired: number;
+  /** Laser shots that hit an enemy. */
+  laserHits: number;
   minesPlanted: number;
   itemsPicked: number;
   itemsByType: Record<ItemType, number>;
@@ -100,11 +103,18 @@ export interface PlayerState {
   ammo: number;
   hasLauncher: boolean;
   grenades: number;
+  hasLaser: boolean;
+  laserShots: number;
   mines: number;
   /** Remaining ticks for each timer; 0 = ready / inactive. */
   knifeCooldown: number;
   gunCooldown: number;
   launcherCooldown: number;
+  laserCooldown: number;
+  /** Ticks until a charging laser fires (0 = not charging). */
+  laserCharge: number;
+  /** Direction the charging laser is locked to, radians. */
+  laserAim: number;
   mineCooldown: number;
   switchTimer: number;
   invulnerableTimer: number;
@@ -189,6 +199,9 @@ export type GameEvent =
   | { type: 'swing'; tick: number; playerId: number; hitIds: number[] }
   | { type: 'hit'; tick: number; attackerId: number; targetId: number; weapon: DamageSource; damage: number; shieldDamage: number; hpDamage: number }
   | { type: 'grenade'; tick: number; playerId: number; grenadeId: number }
+  | { type: 'laserCharge'; tick: number; playerId: number; aim: number }
+  /** A laser fired: `path` is x0, y0, x1, y1, … (start, bounce points, end); hitId is the player it stopped at, or -1. */
+  | { type: 'laser'; tick: number; playerId: number; path: number[]; hitId: number }
   | { type: 'minePlanted'; tick: number; playerId: number; mineId: number; x: number; y: number }
   | { type: 'explosion'; tick: number; ownerId: number; source: 'grenade' | 'mine'; sourceId: number; x: number; y: number; radius: number; hitIds: number[] }
   | { type: 'bulletEnd'; tick: number; bulletId: number; x: number; y: number; reason: 'wall' | 'player' | 'range' }

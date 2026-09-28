@@ -56,9 +56,9 @@ export function decide(state) {
   Eliminated players rank below all survivors, and a later elimination ranks higher.
   Exact ties share a rank.
 - **The safe zone shrinks.** From 45 s the playable area closes in on the map centre, and
-  standing outside it hurts ([§5.12](#512-safe-zone)). Hiding or waiting out the clock does not work.
+  standing outside it hurts ([§5.13](#513-safe-zone)). Hiding or waiting out the clock does not work.
 - You see the whole map and everything on it. The only exception is enemies hiding in
-  **bushes** ([§5.11](#511-bushes)).
+  **bushes** ([§5.12](#512-bushes)).
 
 ---
 
@@ -85,14 +85,16 @@ fixed order:
 1. **Weapon switches**.
 2. **Turning**: facing rotates toward your `aim`.
 3. **Movement**, then walls and player–player collisions.
-4. **Attacks**: knife swings hit instantly, and new bullets/grenades start at your centre.
-5. **Projectiles** move along their path (bullets, then grenades), hitting walls or players.
+4. **Attacks**: knife swings hit instantly, new bullets/grenades start at your centre, and a laser starts
+   charging.
+5. **Projectiles** move along their path (bullets, then grenades), hitting walls or players. Then
+   **lasers** whose charge ran out fire.
 6. **Mines** whose fuse ran out explode, then **explosions** deal damage.
 7. **Zone damage** (on whole seconds) to players outside the safe zone.
 8. **Deaths**: lives are lost, gear is dropped, kills are credited.
 9. **Pickups**.
 10. **Respawns**, and gun pads refill.
-11. **Cooldowns** count down, and time spent in bushes is updated (see [§5.11](#511-bushes)).
+11. **Cooldowns** count down, and time spent in bushes is updated (see [§5.12](#512-bushes)).
 
 Consequences:
 - Your action always reacts to state that is one tick old.
@@ -158,7 +160,26 @@ Consequences:
   20 at the edge. Distance is measured from the blast centre to the nearest point of the target
   (centre distance − 16).
 
-### 5.6 Mines
+### 5.6 Laser
+- Picked up as a `laser` item, which gives 3 shots (max 6).
+- **Attacking starts a charge.** The beam's direction is locked to your facing at that moment, and
+  your facing stays locked until it fires. You can keep moving (top speed 190 u/s). After
+  **0.75 s** the beam fires from wherever your centre is then. Starting a charge ends
+  invulnerability, and while charging you are revealed like after an attack (see §5.12).
+- **Everyone sees it coming.** `state.lasers` lists every charging laser with `charge` (seconds until it
+  fires) and `path`: where the beam would go if it fired now, from the shooter's current centre. Your own
+  and everyone's countdown is also `players[i].laserCharge`.
+- The beam is **instant**. It goes straight, **reflects off walls and the map edge 1 time(s)** (angle
+  in = angle out), and ends after 2000 u in total. It stops at the **first player it touches** (a
+  player whose centre is within player radius + 3 u of the beam) and deals **60** damage.
+  Before its bounce the beam passes through you, but **the reflected part can hit you** (a suicide if it kills you).
+- A shot is used when the beam fires; then the laser has a 1.5 s cooldown (`cooldowns.laser`). Switching
+  weapons or dying cancels a charge and keeps the shot.
+- In `state.events`, laser damage shows up as `weapon: 'laser'`, and every shot as a `laser` event with its
+  path and the player it hit.
+- To dodge, get off the line early: with inertia you need a few ticks to change direction.
+
+### 5.7 Mines
 - Picked up as a `mines` item, which gives +2 (carry at most 3).
 - `plantMine: true` plants one at your position, whatever weapon you hold, even while switching.
   Cooldown is 0.5 s.
@@ -167,7 +188,7 @@ Consequences:
 - An explosion **immediately detonates every other mine in its radius** (chain reaction).
 - Mines don't block movement. They outlive their owner, and kills still go to the owner.
 
-### 5.7 Explosions
+### 5.8 Explosions
 - Walls block explosions: a player takes no damage if a wall is on the straight line
   from the blast centre to their centre.
 - **Your own explosions hurt you** (×1 damage). Dying to your own explosive is a suicide,
@@ -176,21 +197,21 @@ Consequences:
 - In `state.events`, explosion damage shows up as `weapon: 'explosion'`. `state.explosions` lists
   every blast from the previous tick.
 
-### 5.8 Weapon switching
-- Return `weapon: 'knife' | 'gun' | 'launcher'` to switch; you must own the weapon. The new weapon's
+### 5.9 Weapon switching
+- Return `weapon: 'knife' | 'gun' | 'launcher' | 'laser'` to switch; you must own the weapon. The new weapon's
   speed applies at once, but you **cannot attack for 0.3 s** (`cooldowns.switch`).
 - Requesting the weapon you already hold does nothing, so it is safe to send every tick.
 
-### 5.9 Death, respawn, kills
-- At 0 hp you lose a life. Your gun (if it has ammo) and your launcher (if it has grenades)
-  drop where you died as items that keep their ammo. Carried mines drop as a `mines` item.
+### 5.10 Death, respawn, kills
+- At 0 hp you lose a life. Your gun (if it has ammo), your launcher (if it has grenades) and your
+  laser (if it has shots) drop where you died as items that keep their ammo. Carried mines drop as a `mines` item.
 - You respawn after 2 s with full hp, 0 shield and only the knife. The spawn point is
   random among spawn points at least 300 u from every living enemy, or the farthest one if
   none qualifies. Once the safe zone shrinks, only spawn points inside it count; if none is left,
   you respawn at a free spot inside the zone, as far from enemies as possible.
 - A kill is credited to the last *other* player who damaged you in that life.
 
-### 5.10 Items
+### 5.11 Items
 Items are circles of radius 12. You pick one up when your centre is within
 **28 u** of it (player radius + item radius). If several players touch it, the closest one gets it.
 **Items you can't use stay on the ground**: full hp, full shield, max ammo, and so on.
@@ -203,13 +224,14 @@ Items are circles of radius 12. You pick one up when your centre is within
 | `ammo` | +10 gun ammo | you have a gun and ammo < 40 |
 | `gun` | gun + its ammo | no gun yet, or gun ammo < 40 |
 | `launcher` | launcher + its grenades | no launcher yet, or grenades < 6 |
+| `laser` | laser + its shots | no laser yet, or shots < 6 |
 | `mines` | +2 mines | mines < 3 |
 
 Random items appear every 6 s, starting 3 s into the match, at random free spots
 (inside the safe zone once it shrinks). Spawning pauses while 6 spawned items are on the map.
-Spawn weights: ammo 30, shield 25, health 25, gun 12, life 8, launcher 20, mines 10.
+Spawn weights: ammo 26, shield 18, health 18, gun 10, life 7, launcher 10, mines 15, laser 12.
 
-### 5.11 Bushes
+### 5.12 Bushes
 - Bushes are rectangles in `info.map.bushes`. They block nothing: players, bullets, grenades and
   explosions pass through them.
 - A player whose **centre** is inside a bush is **hidden** from an enemy, unless:
@@ -228,7 +250,7 @@ Spawn weights: ammo 30, shield 25, health 25, gun 12, life 8, launcher 20, mines
   shows where the shots come from.
 - You always see yourself.
 
-### 5.12 Safe zone
+### 5.13 Safe zone
 - The safe zone is a circle around the **map centre**, described every tick in `state.zone`.
   Its radius follows a fixed schedule:
   1. Until 45 s it covers the whole map.
@@ -239,7 +261,7 @@ Spawn weights: ammo 30, shield 25, health 25, gun 12, life 8, launcher 20, mines
 - At every whole second of match time, each living player whose **centre** is outside the zone
   takes **10 damage**. Shield absorbs it first, and invulnerability blocks it.
 - Zone damage counts as noise, so it reveals a player hiding in a bush outside the zone
-  ([§5.11](#511-bushes)).
+  ([§5.12](#512-bushes)).
 - Dying to the zone gives nobody the kill. In `state.events` zone damage is a `hit` with
   `weapon: 'zone'` and `attackerId` equal to the damaged player's own id.
 - A point is inside if `(x - zone.x)² + (y - zone.y)² <= radius²`. The countdowns
@@ -266,9 +288,9 @@ write your bot in plain JavaScript.
 //   * Speeds are u/s, times and timers are seconds.
 //   * `players` is indexed by player id: state.players[id].id === id.
 
-export type WeaponName = 'knife' | 'gun' | 'launcher';
+export type WeaponName = 'knife' | 'gun' | 'launcher' | 'laser';
 
-export type ItemType = 'ammo' | 'shield' | 'health' | 'gun' | 'life' | 'launcher' | 'mines';
+export type ItemType = 'ammo' | 'shield' | 'health' | 'gun' | 'life' | 'launcher' | 'mines' | 'laser';
 
 export interface Vec2 {
   x: number;
@@ -350,8 +372,11 @@ export interface PlayerView {
   /** Weapons owned besides the knife (the knife is always owned). */
   hasGun: boolean;
   hasLauncher: boolean;
-  /** Ammunition: gun bullets and launcher grenades. */
-  ammo: { gun: number; launcher: number };
+  hasLaser: boolean;
+  /** Ammunition: gun bullets, launcher grenades and laser shots. */
+  ammo: { gun: number; launcher: number; laser: number };
+  /** Seconds until this player's charging laser fires (0 = not charging). See `lasers` in the state. */
+  laserCharge: number;
   /** Mines carried. */
   mines: number;
   /** Seconds until each action is available again (0 = ready now). */
@@ -359,6 +384,8 @@ export interface PlayerView {
     knife: number;
     gun: number;
     launcher: number;
+    /** Until you can start charging the laser again (it starts after a shot fires). */
+    laser: number;
     mine: number;
     /** Weapon switching: no attacks until this reaches 0. */
     switch: number;
@@ -395,6 +422,23 @@ export interface MineView {
   y: number;
   /** Seconds until it explodes. */
   fuse: number;
+}
+
+/**
+ * A laser being charged: it fires along `path` when `charge` runs out. The direction is locked,
+ * but the shooter can still move, so the whole line moves with them until it fires.
+ */
+export interface LaserView {
+  ownerId: number;
+  /** Seconds until it fires. */
+  charge: number;
+  /** Locked direction, radians. */
+  angle: number;
+  /**
+   * Where the beam would go if it fired now from the shooter's current centre: the start, each
+   * bounce point, then the end. It stops at the first player it touches (not shown here).
+   */
+  path: Vec2[];
 }
 
 /** An explosion that happened during the last tick. */
@@ -442,6 +486,8 @@ export type EventView =
   | { type: 'shot'; playerId: number }
   | { type: 'swing'; playerId: number; hitIds: number[] }
   | { type: 'hit'; attackerId: number; targetId: number; weapon: WeaponName | 'explosion' | 'zone'; damage: number }
+  /** A laser fired: its path (start, bounce points, end) and the player it hit, or null. */
+  | { type: 'laser'; playerId: number; path: Vec2[]; hitId: number | null }
   | { type: 'death'; playerId: number; killerId: number; livesLeft: number }
   | { type: 'eliminated'; playerId: number }
   | { type: 'respawn'; playerId: number; x: number; y: number }
@@ -462,6 +508,8 @@ export interface BotState {
   bullets: BulletView[];
   grenades: GrenadeView[];
   mines: MineView[];
+  /** Lasers being charged (their warning lines). */
+  lasers: LaserView[];
   explosions: ExplosionView[];
   items: ItemView[];
   events: EventView[];
@@ -509,7 +557,7 @@ return {
 
 - All fields are optional. `null`, `undefined` or `{}` means stand still, keep facing, and don't attack.
 - Every field must have the right type: `move` must be `{x, y}` with finite numbers, `aim`
-  a finite number, `attack`/`plantMine` booleans, and `weapon` one of the three names. **If any field
+  a finite number, `attack`/`plantMine` booleans, and `weapon` one of the four names. **If any field
   is malformed, the whole action is rejected** and counts as a failure (see §8).
 - Unknown extra fields are ignored. Speed, rate of fire and damage come only from the
   rules: out-of-range numbers are clamped, never trusted.
@@ -583,6 +631,7 @@ Every value below is also available at runtime as `info.rules.<path>`, for examp
 | `player.speedKnife` | 210 | u/s | Maximum movement speed while holding the knife. |
 | `player.speedGun` | 190 | u/s | Maximum movement speed while holding the gun. |
 | `player.speedLauncher` | 180 | u/s | Maximum movement speed while holding the grenade launcher. |
+| `player.speedLaser` | 190 | u/s | Maximum movement speed while holding the laser (also while charging it). |
 | `player.accelTime` | 0.3 | s | Inertia: time to go from standing to top speed (or back). Velocity changes by at most topSpeed / accelTime per second (0 = instant). |
 | `player.turnRateDegrees` | 540 | deg/s | Maximum rate at which facing rotates toward the requested aim angle. |
 | `player.maxHp` | 100 | hp | Health at spawn and the health cap. |
@@ -626,6 +675,19 @@ Every value below is also available at runtime as `info.rules.<path>`, for examp
 | `launcher.blastRadius` | 80 | u | Grenade explosion radius (measured to the edge of a target). |
 | `launcher.centerDamage` | 200 | hp | Grenade damage at the centre of the explosion. |
 | `launcher.edgeDamage` | 20 | hp | Grenade damage at the edge of the blast radius (linear falloff in between). |
+
+**laser**
+
+| `info.rules.…` | Value | Unit | Meaning |
+|---|---|---|---|
+| `laser.chargeTime` | 0.75 | s | Warning time: the beam fires this long after you start charging (everyone sees the warning line meanwhile). |
+| `laser.damage` | 60 | hp | Damage of a laser hit. |
+| `laser.cooldown` | 1.5 | s | After a laser fires, you cannot start charging again for this long. |
+| `laser.range` | 2000 | u | Total beam length, including the part after a bounce. |
+| `laser.bounces` | 1 | bounces | How many times the beam reflects off walls (and the map edge) before it ends. |
+| `laser.beamRadius` | 3 | u | Beam half-width: it hits a player whose centre is within player radius + this of the beam's line. |
+| `laser.pickupAmmo` | 3 | shots | Laser shots gained from a laser item. |
+| `laser.maxAmmo` | 6 | shots | Laser shot cap. |
 
 **mines**
 
@@ -686,13 +748,14 @@ Every value below is also available at runtime as `info.rules.<path>`, for examp
 | `items.shieldAmount` | 50 | shield | Shield from a shield item (only picked up below max shield). |
 | `items.healthAmount` | 40 | hp | Health from a health item (only picked up below max health). |
 | `items.lifeAmount` | 1 | lives | Lives from an extra-life item (only picked up below max lives). |
-| `items.weights.ammo` | 30 | weight | Relative spawn weight of ammo items. |
-| `items.weights.shield` | 25 | weight | Relative spawn weight of shield items. |
-| `items.weights.health` | 25 | weight | Relative spawn weight of health items. |
-| `items.weights.gun` | 12 | weight | Relative spawn weight of gun items. |
-| `items.weights.life` | 8 | weight | Relative spawn weight of extra-life items. |
-| `items.weights.launcher` | 20 | weight | Relative spawn weight of grenade launcher items. |
-| `items.weights.mines` | 10 | weight | Relative spawn weight of mines items. |
+| `items.weights.ammo` | 26 | weight | Relative spawn weight of ammo items. |
+| `items.weights.shield` | 18 | weight | Relative spawn weight of shield items. |
+| `items.weights.health` | 18 | weight | Relative spawn weight of health items. |
+| `items.weights.gun` | 10 | weight | Relative spawn weight of gun items. |
+| `items.weights.life` | 7 | weight | Relative spawn weight of extra-life items. |
+| `items.weights.launcher` | 10 | weight | Relative spawn weight of grenade launcher items. |
+| `items.weights.mines` | 15 | weight | Relative spawn weight of mines items. |
+| `items.weights.laser` | 12 | weight | Relative spawn weight of laser items. |
 
 **match**
 

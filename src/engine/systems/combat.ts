@@ -2,6 +2,7 @@ import { secondsToTicks } from '../config.ts';
 import { DEG, dcos, direction, length } from '../dmath.ts';
 import { lineOfSight, segmentCircleHit, segmentRectHit } from '../geometry.ts';
 import { solidRects, type ActionInput, type DamageSource, type GameState, type PlayerState } from '../types.ts';
+import { startLaserCharge } from './laser.ts';
 
 /**
  * Apply damage to a target. Shield absorbs first. Players that are dead, already
@@ -99,6 +100,8 @@ export function applyAttacks(state: GameState, actions: readonly ActionInput[]):
       };
       state.grenades.push(grenade);
       state.events.push({ type: 'grenade', tick: state.tick, playerId: p.id, grenadeId: grenade.id });
+    } else if (p.weapon === 'laser') {
+      startLaserCharge(state, p);
     }
   }
 }
