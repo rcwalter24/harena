@@ -454,11 +454,25 @@ export class Renderer {
     ctx.strokeStyle = '#4a5263';
     ctx.lineWidth = 4;
     ctx.strokeRect(-2, -2, width + 4, height + 4);
+    ctx.fillStyle = '#3a4150';
+    for (const w of walls) ctx.fillRect(w.x, w.y, w.w, w.h);
+    // Top-edge highlight only where the edge is really exposed: walls that touch or overlap
+    // (L shapes, joined bars) then read as one piece instead of showing a seam.
+    ctx.fillStyle = '#4b5366';
     for (const w of walls) {
-      ctx.fillStyle = '#3a4150';
-      ctx.fillRect(w.x, w.y, w.w, w.h);
-      ctx.fillStyle = '#4b5366';
-      ctx.fillRect(w.x, w.y, w.w, Math.min(4, w.h));
+      const band = Math.min(4, w.h);
+      let spans: [number, number][] = [[w.x, w.x + w.w]];
+      for (const o of walls) {
+        // Only a wall covering the line just above this edge hides it.
+        if (o === w || o.y > w.y - 0.5 || o.y + o.h < w.y - 0.5) continue;
+        spans = spans.flatMap(([a, b]): [number, number][] => {
+          const lo = Math.max(a, o.x);
+          const hi = Math.min(b, o.x + o.w);
+          if (lo >= hi) return [[a, b]];
+          return ([[a, lo], [hi, b]] as [number, number][]).filter(([p, q]) => q - p > 0.5);
+        });
+      }
+      for (const [a, b] of spans) ctx.fillRect(a, w.y, b - a, band);
     }
   }
 
