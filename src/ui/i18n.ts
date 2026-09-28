@@ -140,6 +140,11 @@ export const ZH: Record<string, string> = {
   Blockyard: '方块场',
   'Open Field': '开阔地',
   Duel: '决斗场',
+  Crossroads: '十字路口',
+  Fortress: '要塞',
+  'Pillar Grove': '石柱林',
+  Riverside: '河道',
+  Maze: '迷宫',
 
   // Add-bot dialog
   'Add a bot': '添加机器人',

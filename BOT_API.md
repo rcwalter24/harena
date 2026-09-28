@@ -919,8 +919,13 @@ Your bot receives the map in `info.map` and should work on any of them.
 |---|---|---|---|---|---|---|
 | `blocks` | Blockyard | 1600 × 1000 | 15 | 4 | 8 | 2 |
 | `corridors` | Corridors | 1400 × 1000 | 13 | 4 | 8 | 2 |
+| `crossroads` | Crossroads | 1400 × 1000 | 13 | 4 | 8 | 2 |
 | `duel` | Duel | 1000 × 700 | 3 | 2 | 8 | 2 |
+| `fortress` | Fortress | 1600 × 1000 | 16 | 3 | 8 | 2 |
+| `maze` | Maze | 1400 × 1000 | 26 | 4 | 8 | 2 |
 | `open` | Open Field | 1600 × 1000 | 7 | 4 | 8 | 2 |
+| `pillars` | Pillar Grove | 1400 × 1000 | 18 | 4 | 8 | 2 |
+| `river` | Riverside | 1600 × 1000 | 10 | 4 | 8 | 2 |
 
 ---
 
