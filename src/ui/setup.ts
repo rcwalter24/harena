@@ -1,4 +1,5 @@
 import { DEFAULT_CONFIG } from '../engine/config.ts';
+import { createGame } from '../engine/game.ts';
 import { validateReplay, type Replay } from '../engine/replay.ts';
 import { drawMapPreview } from '../render/mapPreview.ts';
 import { DUMMY_KINDS, type DummyKind } from '../match/dummies.ts';
@@ -82,6 +83,7 @@ export function mountSetup(app: HTMLElement, callbacks: SetupCallbacks): () => v
           <div class="form">
             <label>Map <select id="map"></select></label>
             <canvas id="map-preview" class="map-preview"></canvas>
+            <div class="note">Coloured dots: where each player starts with this seed.</div>
             <label>Seed <span class="seed-row"><input type="text" id="seed" /><button id="reseed" title="Random seed">🎲</button></span></label>
             <label>Time limit (s) <input type="number" id="time" min="0" max="3600" step="10" /></label>
             <label class="check"><input type="checkbox" id="debug" /> Debug rules (99 lives, cheat keys)</label>
@@ -201,10 +203,21 @@ export function mountSetup(app: HTMLElement, callbacks: SetupCallbacks): () => v
       : '';
   }
 
+  /** The preview shows where each seat actually starts for the current seed. */
+  function renderPreview(): void {
+    const map = MAPS.find((m) => m.id === setup.mapId);
+    if (!map) return;
+    let starts: { x: number; y: number }[] = [];
+    if (setup.slots.length > 0 && setup.slots.length <= map.spawns.length) {
+      const state = createGame({ map, seed: setup.seed, timeLimit: 0, players: setup.slots.map((_, i) => ({ name: String(i) })) });
+      starts = state.players.map((p) => ({ x: p.x, y: p.y }));
+    }
+    drawMapPreview($<HTMLCanvasElement>('map-preview'), map, starts);
+  }
+
   function renderForm(): void {
     mapSelect.value = setup.mapId;
-    const map = MAPS.find((m) => m.id === setup.mapId);
-    if (map) drawMapPreview($<HTMLCanvasElement>('map-preview'), map);
+    renderPreview();
     seedInput.value = setup.seed;
     timeInput.value = String(setup.timeLimit);
     debugBox.checked = setup.debug;
@@ -245,6 +258,7 @@ export function mountSetup(app: HTMLElement, callbacks: SetupCallbacks): () => v
   seedInput.oninput = () => {
     setup.seed = seedInput.value.trim() || '0';
     persist();
+    renderPreview();
   };
   $('reseed').onclick = () => {
     setup.seed = randomSeed();

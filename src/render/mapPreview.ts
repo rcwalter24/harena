@@ -1,8 +1,12 @@
 import type { MapData } from '../engine/types.ts';
 import { PLAYER_COLORS } from './renderer.ts';
 
-/** Small static thumbnail of a map: walls, bushes, gun pads and spawn points. */
-export function drawMapPreview(canvas: HTMLCanvasElement, map: MapData): void {
+/**
+ * Small static thumbnail of a map: walls, bushes and gun pads, plus where each
+ * player starts (`starts[i]` = player i's position, in player colours). Spawn
+ * points nobody starts on are drawn as small grey dots.
+ */
+export function drawMapPreview(canvas: HTMLCanvasElement, map: MapData, starts: { x: number; y: number }[] = []): void {
   const dpr = window.devicePixelRatio || 1;
   const cssW = canvas.clientWidth || 300;
   const cssH = Math.round((cssW * map.height) / map.width);
@@ -26,11 +30,22 @@ export function drawMapPreview(canvas: HTMLCanvasElement, map: MapData): void {
     ctx.arc(g.x, g.y, 22, 0, Math.PI * 2);
     ctx.stroke();
   }
-  map.spawns.forEach((sp, i) => {
+  const taken = (sp: { x: number; y: number }) => starts.some((p) => p.x === sp.x && p.y === sp.y);
+  ctx.fillStyle = '#5c6578';
+  for (const sp of map.spawns) {
+    if (taken(sp)) continue;
+    ctx.beginPath();
+    ctx.arc(sp.x, sp.y, 9, 0, Math.PI * 2);
+    ctx.fill();
+  }
+  starts.forEach((p, i) => {
     ctx.fillStyle = PLAYER_COLORS[i % PLAYER_COLORS.length];
     ctx.beginPath();
-    ctx.arc(sp.x, sp.y, 18, 0, Math.PI * 2);
+    ctx.arc(p.x, p.y, 24, 0, Math.PI * 2);
     ctx.fill();
+    ctx.strokeStyle = '#10131a';
+    ctx.lineWidth = 5;
+    ctx.stroke();
   });
   ctx.strokeStyle = '#4a5263';
   ctx.lineWidth = 12;

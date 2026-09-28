@@ -169,9 +169,9 @@ export class Renderer {
     if (opts.debug) this.drawDebugUnder(state, positions, shown);
     for (const p of state.players) {
       if (!p.alive || !shown.has(p.id)) continue;
-      // Players inside a bush are drawn faded, as a hint that they are hidden from others.
-      const inBush = bushAt(state, p.x, p.y) >= 0 && p.noiseTimer === 0;
-      ctx.globalAlpha = inBush ? 0.45 : 1;
+      // Players inside a bush are drawn faded; a bit less so while revealed by noise.
+      const inBush = bushAt(state, p.x, p.y) >= 0;
+      ctx.globalAlpha = !inBush ? 1 : p.noiseTimer > 0 ? 0.75 : 0.45;
       this.drawPlayer(state, p, positions[p.id], p.id === opts.focusId);
       ctx.globalAlpha = 1;
     }
