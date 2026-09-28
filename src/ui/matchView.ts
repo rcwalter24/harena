@@ -10,6 +10,7 @@ import { BotController } from '../match/supervisor.ts';
 import { playerColor } from '../render/renderer.ts';
 import { createBrowserWorker } from '../sandbox/browser/host.ts';
 import { ArenaShell } from './arenaShell.ts';
+import { zoneStatus } from './hud.ts';
 import { displayName, getBot } from './bots.ts';
 import { HumanController } from './input.ts';
 import { randomSeed, saveSetup, type MatchSetup } from './matchSetup.ts';
@@ -59,8 +60,11 @@ export function mountMatch(app: HTMLElement, setup: MatchSetup, callbacks: Match
   const humanId = setup.slots.findIndex((s) => s.kind === 'human');
   const map = getMap(setup.mapId);
   const names = seatNames(setup);
-  const config = setup.debug ? mergeConfig(DEFAULT_CONFIG, { player: { startLives: 99, maxLives: 99 } }) : DEFAULT_CONFIG;
-  const metaText = () => `${map.name} · seed ${escapeHtml(setup.seed)} · ${setup.timeLimit > 0 ? `${setup.timeLimit}s` : 'no time limit'}${setup.debug ? ' · debug rules' : ''}`;
+  const config = mergeConfig(DEFAULT_CONFIG, {
+    ...(setup.debug ? { player: { startLives: 99, maxLives: 99 } } : {}),
+    ...(setup.zone === false ? { zone: { damagePerSecond: 0 } } : {}),
+  });
+  const metaText = () => `${map.name} · seed ${escapeHtml(setup.seed)} · ${setup.timeLimit > 0 ? `${setup.timeLimit}s` : 'no time limit'}${setup.zone === false ? ' · no zone' : ''}${setup.debug ? ' · debug rules' : ''}`;
 
   let runner: MatchRunner | null = null;
   let recorder: ReplayRecorder | null = null;
@@ -89,7 +93,7 @@ export function mountMatch(app: HTMLElement, setup: MatchSetup, callbacks: Match
     onPanel: (s) => {
       const t = s.tick / s.config.tickRate;
       const left = s.timeLimitTicks > 0 ? ` · ${Math.max(0, setup.timeLimit - t).toFixed(0)}s left` : '';
-      shell.setInfo(`tick ${s.tick} · ${t.toFixed(1)}s${left} · ${shell.loop?.actualTps ?? 0} tps`);
+      shell.setInfo(`tick ${s.tick} · ${t.toFixed(1)}s${left}${zoneStatus(s)} · ${shell.loop?.actualTps ?? 0} tps`);
       if (logsDirty) renderLogs();
     },
     onKey: (e) => {

@@ -2,6 +2,7 @@ import { ITEM_TYPES, secondsToTicks, type ItemType } from '../config.ts';
 import { circleOverlapsRect } from '../geometry.ts';
 import { length } from '../dmath.ts';
 import type { GameState, Item, PlayerState } from '../types.ts';
+import { insideZone, zoneAt, zoneShrinking } from './zone.ts';
 
 /** Would picking up this item do anything for the player? Useless items are left on the ground. */
 export function canUseItem(state: GameState, p: PlayerState, type: ItemType): boolean {
@@ -109,9 +110,18 @@ export function defaultItemAmmo(state: GameState, type: ItemType): number {
 export function findItemSpot(state: GameState): { x: number; y: number } | null {
   const { map, config, rng } = state;
   const margin = config.items.radius + 8;
+  // Once the zone shrinks, random items only appear inside it.
+  let [x0, x1, y0, y1] = [margin, map.width - margin, margin, map.height - margin];
+  const zone = zoneShrinking(state) ? zoneAt(state) : null;
+  if (zone) {
+    const reach = zone.radius - margin;
+    if (reach <= 0) return null;
+    [x0, x1, y0, y1] = [Math.max(x0, zone.x - reach), Math.min(x1, zone.x + reach), Math.max(y0, zone.y - reach), Math.min(y1, zone.y + reach)];
+  }
   for (let attempt = 0; attempt < 40; attempt++) {
-    const x = rng.items.range(margin, map.width - margin);
-    const y = rng.items.range(margin, map.height - margin);
+    const x = rng.items.range(x0, x1);
+    const y = rng.items.range(y0, y1);
+    if (zone && !insideZone(zone, x, y, margin)) continue;
     if (map.walls.some((w) => circleOverlapsRect(x, y, margin, w))) continue;
     if (state.players.some((p) => p.alive && length(p.x - x, p.y - y) < 80)) continue;
     if (state.items.some((i) => length(i.x - x, i.y - y) < 60)) continue;

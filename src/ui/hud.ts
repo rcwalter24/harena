@@ -1,4 +1,5 @@
 import type { GameEvent, GameState } from '../engine/types.ts';
+import { zoneAt, zoneEnabled } from '../engine/systems/zone.ts';
 import { playerColor } from '../render/renderer.ts';
 
 function el<K extends keyof HTMLElementTagNameMap>(tag: K, className = '', text = ''): HTMLElementTagNameMap[K] {
@@ -59,6 +60,15 @@ export class PlayerCards {
   }
 }
 
+/** Short safe-zone status for the info line ('' when the zone is off). */
+export function zoneStatus(state: GameState): string {
+  if (!zoneEnabled(state.config)) return '';
+  const zone = zoneAt(state);
+  if (state.tick < zone.startTick) return ` · zone shrinks in ${Math.ceil((zone.startTick - state.tick) / state.config.tickRate)}s`;
+  if (state.tick < zone.endTick) return ' · zone shrinking';
+  return ' · zone final';
+}
+
 /** Kill messages overlaid on the arena; each fades after a few seconds. */
 export class KillFeed {
   private readonly root: HTMLElement;
@@ -85,7 +95,7 @@ export class KillFeed {
           const icon = e.weapon === 'gun' ? ' ⁍ ' : e.weapon === 'knife' ? ' 🗡 ' : ' 💥 ';
           row.append(name(e.killerId), el('span', 'how', icon), name(e.playerId));
         } else {
-          const how = e.weapon === 'launcher' || e.weapon === 'mine' ? ' blew themselves up' : ' died';
+          const how = e.weapon === 'launcher' || e.weapon === 'mine' ? ' blew themselves up' : e.weapon === 'zone' ? ' was caught outside the zone' : ' died';
           row.append(name(e.playerId), el('span', 'how', how));
         }
       } else {

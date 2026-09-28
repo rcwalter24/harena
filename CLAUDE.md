@@ -22,6 +22,9 @@ git history; this file lists the rules that must keep holding.
   `normalizeAction` before `step()`. Anything that mutates state outside `step()` (e.g. debug
   cheats) must go through `engine/debug.ts` and be recorded (`ReplayRecorder.recordCheat`).
   `hashState` must cover all simulation state (add new fields to it).
+- **Safe zone** (`systems/zone.ts`) is derived from the tick and config only, so it adds no
+  state to hash. `zone.damagePerSecond: 0` turns it off (old replays without zone config are
+  loaded that way); with it off, behaviour is identical to before the zone existed.
 - **Tick order** is documented in `game.ts` `step()` and in BOT_API.md §4 — keep them in sync.
 - **Visibility**: bots and a human player only see what `isVisibleTo` allows (bushes). The
   renderer takes `viewerId` for the human; spectators see everything. Scripted dummies also

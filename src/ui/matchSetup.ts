@@ -13,6 +13,8 @@ export interface MatchSetup {
   timeLimit: number;
   /** Debug rules: 99 lives, cheat keys (G = gun, H = heal). */
   debug: boolean;
+  /** Shrinking safe zone; missing (older saved setups) means on. */
+  zone?: boolean;
   slots: SlotSpec[];
 }
 

@@ -67,6 +67,12 @@ export interface GameConfig {
     revealDistance: number;
     noiseRevealTime: number;
   };
+  zone: {
+    shrinkStart: number;
+    shrinkDuration: number;
+    finalRadius: number;
+    damagePerSecond: number;
+  };
   respawn: {
     delay: number;
     invulnerability: number;
@@ -155,6 +161,12 @@ export const DEFAULT_CONFIG: GameConfig = {
     revealDistance: 90,
     noiseRevealTime: 1,
   },
+  zone: {
+    shrinkStart: 30,
+    shrinkDuration: 60,
+    finalRadius: 200,
+    damagePerSecond: 10,
+  },
   respawn: {
     delay: 2,
     invulnerability: 1.5,
@@ -235,6 +247,10 @@ export const CONFIG_DOCS: Record<string, ConfigDoc> = {
   'explosions.selfDamageFactor': { unit: 'x', description: 'Multiplier for damage you take from your own explosions (1 = full damage).' },
   'bushes.revealDistance': { unit: 'u', description: 'An enemy in a bush is visible to you if the centres are at most this far apart.' },
   'bushes.noiseRevealTime': { unit: 's', description: 'A player in a bush stays visible this long after attacking or taking damage.' },
+  'zone.shrinkStart': { unit: 's', description: 'Match time at which the safe zone starts shrinking (before that it covers the whole map).' },
+  'zone.shrinkDuration': { unit: 's', description: 'The zone radius shrinks linearly to its final size over this long.' },
+  'zone.finalRadius': { unit: 'u', description: 'Radius of the zone once it has finished shrinking. Its centre is the map centre.' },
+  'zone.damagePerSecond': { unit: 'hp', description: 'Damage taken at every whole second of match time while your centre is outside the zone (0 = zone off).' },
   'respawn.delay': { unit: 's', description: 'Time between losing a life and respawning.' },
   'respawn.invulnerability': { unit: 's', description: 'Invulnerability after (re)spawning; ends early when you attack.' },
   'respawn.safeDistance': { unit: 'u', description: 'Respawn picks a random spawn point at least this far from every living enemy (else the farthest one).' },

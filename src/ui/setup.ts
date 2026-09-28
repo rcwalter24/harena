@@ -85,9 +85,10 @@ export function mountSetup(app: HTMLElement, callbacks: SetupCallbacks): () => v
           <div class="form">
             <label>Map <select id="map"></select></label>
             <canvas id="map-preview" class="map-preview"></canvas>
-            <div class="note">Coloured dots: where each player starts with this seed.</div>
+            <div class="note">Coloured dots: where each player starts with this seed. Dashed circle: final safe zone.</div>
             <label>Seed <span class="seed-row"><input type="text" id="seed" /><button id="reseed" title="Random seed">🎲</button></span></label>
             <label>Time limit (s) <input type="number" id="time" min="0" max="3600" step="10" /></label>
+            <label class="check"><input type="checkbox" id="zone" /> Shrinking safe zone (from ${DEFAULT_CONFIG.zone.shrinkStart}s)</label>
             <label class="check"><input type="checkbox" id="debug" /> Debug rules (99 lives, cheat keys)</label>
           </div>
           <h2>Players <small id="count"></small></h2>
@@ -105,6 +106,7 @@ export function mountSetup(app: HTMLElement, callbacks: SetupCallbacks): () => v
   const seedInput = $<HTMLInputElement>('seed');
   const timeInput = $<HTMLInputElement>('time');
   const debugBox = $<HTMLInputElement>('debug');
+  const zoneBox = $<HTMLInputElement>('zone');
   const dummyKind = $<HTMLSelectElement>('dummy-kind');
 
   for (const m of MAPS) mapSelect.add(new Option(`${m.name} (${m.width}×${m.height})`, m.id));
@@ -256,7 +258,7 @@ export function mountSetup(app: HTMLElement, callbacks: SetupCallbacks): () => v
       const state = createGame({ map, seed: setup.seed, timeLimit: 0, players: setup.slots.map((_, i) => ({ name: String(i) })) });
       starts = state.players.map((p) => ({ x: p.x, y: p.y }));
     }
-    drawMapPreview($<HTMLCanvasElement>('map-preview'), map, starts);
+    drawMapPreview($<HTMLCanvasElement>('map-preview'), map, starts, setup.zone === false ? undefined : DEFAULT_CONFIG.zone.finalRadius);
   }
 
   function renderForm(): void {
@@ -265,6 +267,7 @@ export function mountSetup(app: HTMLElement, callbacks: SetupCallbacks): () => v
     seedInput.value = setup.seed;
     timeInput.value = String(setup.timeLimit);
     debugBox.checked = setup.debug;
+    zoneBox.checked = setup.zone !== false;
     $<HTMLButtonElement>('add-human').disabled = setup.slots.some((s) => s.kind === 'human') || setup.slots.length >= maxPlayers;
     $<HTMLButtonElement>('add-dummy').disabled = setup.slots.length >= maxPlayers;
   }
@@ -313,6 +316,11 @@ export function mountSetup(app: HTMLElement, callbacks: SetupCallbacks): () => v
     const v = Number(timeInput.value);
     setup.timeLimit = Number.isFinite(v) && v >= 0 ? Math.min(3600, Math.round(v)) : setup.timeLimit;
     persist();
+  };
+  zoneBox.onchange = () => {
+    setup.zone = zoneBox.checked;
+    persist();
+    renderPreview();
   };
   debugBox.onchange = () => {
     setup.debug = debugBox.checked;

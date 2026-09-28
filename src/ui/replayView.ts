@@ -2,6 +2,7 @@ import { ReplayPlayer, type Replay } from '../engine/replay.ts';
 import type { BotStats } from '../match/supervisor.ts';
 import { playerColor } from '../render/renderer.ts';
 import { ArenaShell } from './arenaShell.ts';
+import { zoneStatus } from './hud.ts';
 import { replayFileName } from './matchView.ts';
 import { downloadJson, escapeHtml, showResults } from './results.ts';
 
@@ -55,7 +56,7 @@ export function mountReplay(app: HTMLElement, replay: Replay, callbacks: { onExi
     onPanel: (s) => {
       if (!seeking) seek.value = String(s.tick);
       shell.el('seek-time').textContent = `${formatTime(s.tick, tickRate)} / ${formatTime(total, tickRate)}`;
-      shell.setInfo(`tick ${s.tick} / ${total} · ${shell.loop?.actualTps ?? 0} tps`);
+      shell.setInfo(`tick ${s.tick} / ${total}${zoneStatus(s)} · ${shell.loop?.actualTps ?? 0} tps`);
       const desync = shell.el('desync');
       desync.className = player.desyncs.length ? 'note warn-text' : 'note';
       desync.textContent = player.desyncs.length

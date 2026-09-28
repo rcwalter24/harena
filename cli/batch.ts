@@ -20,6 +20,7 @@ Options:
   --time-limit <sec>   Match length (default from config: 180).
   --concurrency <n>    Games played at the same time (default: CPU cores / bots, 1-8).
   --budget <ms>        Override the per-tick decide() budget (default from config).
+  --no-zone            Turn the shrinking safe zone off.
   --replays <dir>      Write one replay .json per game into <dir> (open them in the web app).
   --json               Print the full summary as JSON instead of a table.
   -h, --help           Show this help.
@@ -43,6 +44,7 @@ try {
       budget: { type: 'string' },
       replays: { type: 'string' },
       json: { type: 'boolean', default: false },
+      'no-zone': { type: 'boolean', default: false },
       help: { type: 'boolean', short: 'h', default: false },
     },
   }).values;
@@ -124,7 +126,7 @@ function report(summary: BatchSummary): string {
 
 try {
   const summary = await runBatch(
-    { bots, maps, games, seed, timeLimit, concurrency, replayDir: args.replays ? resolve(args.replays) : undefined, config: budget ? { sandbox: { decideBudgetMs: budget } } : undefined },
+    { bots, maps, games, seed, timeLimit, concurrency, replayDir: args.replays ? resolve(args.replays) : undefined, config: { ...(budget ? { sandbox: { decideBudgetMs: budget } } : {}), ...(args['no-zone'] ? { zone: { damagePerSecond: 0 } } : {}) } },
     (game, done) => {
       if (process.stderr.isTTY) {
         const winner = game.seats.filter((s) => s.rank === 1).map((s) => s.bot).join(' = ');

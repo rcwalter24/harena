@@ -1,6 +1,6 @@
 // Gunner: grabs weapons, keeps its distance, leads its shots and dodges projectiles.
 // Uses the gun first, the grenade launcher when out of bullets, drops mines on chasers,
-// and falls back to the knife when unarmed and an enemy gets close.
+// falls back to the knife when unarmed and an enemy gets close, and stays inside the safe zone.
 export const meta = { name: 'Gunner', author: 'Harena examples' };
 
 let rules = null;
@@ -102,6 +102,25 @@ function mineEscape(state, me) {
   return { x: dx, y: dy };
 }
 
+// Zone radius `t` seconds from now (it shrinks linearly between its start and end).
+function zoneRadiusIn(zone, t) {
+  const shrinkTime = zone.shrinkEndsIn - zone.shrinkStartsIn;
+  if (shrinkTime <= 0) return zone.radius;
+  const elapsed = Math.max(0, t - zone.shrinkStartsIn);
+  return zone.radius - (zone.radius - zone.finalRadius) * Math.min(1, elapsed / shrinkTime);
+}
+
+// Pull toward the zone centre when we are outside the zone, or will be within 3 s.
+function zonePull(state, me) {
+  const zone = state.zone;
+  if (zone.damagePerSecond === 0) return { x: 0, y: 0 };
+  const d = dist(me, zone);
+  const slack = zoneRadiusIn(zone, 3) - rules.player.radius - 30 - d;
+  if (slack > 0 || d < 1e-6) return { x: 0, y: 0 };
+  const k = Math.min(3, 0.5 - slack / 50);
+  return { x: ((zone.x - me.x) / d) * k, y: ((zone.y - me.y) / d) * k };
+}
+
 // ---------- decision ----------
 
 // Nearest living enemy, preferring ones we can see (hidden ones only have a stale position).
@@ -129,7 +148,9 @@ function wantedItems(state, me) {
     (it.type === 'health' && me.hp < rules.player.maxHp * 0.7) ||
     (it.type === 'shield' && me.shield < rules.player.maxShield) ||
     (it.type === 'life' && me.lives < rules.player.maxLives);
-  return state.items.filter(useful).sort((a, b) => dist(a, me) - dist(b, me));
+  const zoneSoon = zoneRadiusIn(state.zone, 3) - 20;
+  const safe = (it) => state.zone.damagePerSecond === 0 || dist(it, state.zone) < zoneSoon;
+  return state.items.filter((it) => useful(it) && safe(it)).sort((a, b) => dist(a, me) - dist(b, me));
 }
 
 export function decide(state) {
@@ -138,7 +159,8 @@ export function decide(state) {
   const enemy = nearestEnemy(state, me);
   const dodge = dodgeVector(state, me);
   const escape = mineEscape(state, me);
-  const avoid = { x: dodge.x * 2 + escape.x * 3, y: dodge.y * 2 + escape.y * 3 };
+  const zone = zonePull(state, me);
+  const avoid = { x: dodge.x * 2 + escape.x * 3 + zone.x, y: dodge.y * 2 + escape.y * 3 + zone.y };
   const items = wantedItems(state, me);
 
   const weapon = me.hasGun && me.ammo.gun > 0 ? 'gun' : me.hasLauncher && me.ammo.launcher > 0 ? 'launcher' : 'knife';

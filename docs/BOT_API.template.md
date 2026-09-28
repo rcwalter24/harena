@@ -55,6 +55,8 @@ export function decide(state) {
   `info.timeLimit`) runs out first, survivors are ranked by lives left, then by hp + shield.
   Eliminated players rank below all survivors, and a later elimination ranks higher.
   Exact ties share a rank.
+- **The safe zone shrinks.** From {{zone.shrinkStart}} s the playable area closes in on the map centre, and
+  standing outside it hurts ([§5.12](#512-safe-zone)). Hiding or waiting out the clock does not work.
 - You see the whole map and everything on it. The only exception is enemies hiding in
   **bushes** ([§5.11](#511-bushes)).
 
@@ -86,10 +88,11 @@ fixed order:
 4. **Attacks**: knife swings hit instantly, and new bullets/grenades start at your centre.
 5. **Projectiles** move along their path (bullets, then grenades), hitting walls or players.
 6. **Mines** whose fuse ran out explode, then **explosions** deal damage.
-7. **Deaths**: lives are lost, gear is dropped, kills are credited.
-8. **Pickups**.
-9. **Respawns**, and gun pads refill.
-10. **Cooldowns** count down.
+7. **Zone damage** (on whole seconds) to players outside the safe zone.
+8. **Deaths**: lives are lost, gear is dropped, kills are credited.
+9. **Pickups**.
+10. **Respawns**, and gun pads refill.
+11. **Cooldowns** count down.
 
 Consequences:
 - Your action always reacts to state that is one tick old.
@@ -179,7 +182,8 @@ Consequences:
   drop where you died as items that keep their ammo. Carried mines drop as a `mines` item.
 - You respawn after {{respawn.delay}} s with full hp, {{player.startShield}} shield and only the knife. The spawn point is
   random among spawn points at least {{respawn.safeDistance}} u from every living enemy, or the farthest one if
-  none qualifies.
+  none qualifies. Once the safe zone shrinks, only spawn points inside it count; if none is left,
+  you respawn at a free spot inside the zone, as far from enemies as possible.
 - A kill is credited to the last *other* player who damaged you in that life.
 
 ### 5.10 Items
@@ -197,8 +201,9 @@ Items are circles of radius {{items.radius}}. You pick one up when your centre i
 | `launcher` | launcher + its grenades | no launcher yet, or grenades < {{launcher.maxAmmo}} |
 | `mines` | +{{mines.pickupAmount}} mines | mines < {{mines.maxCarry}} |
 
-Random items appear every {{items.spawnInterval}} s, starting {{items.firstSpawnDelay}} s into the match, at random free spots. Spawning
-pauses while {{items.maxOnMap}} spawned items are on the map. Spawn weights: {{derived.itemWeights}}.
+Random items appear every {{items.spawnInterval}} s, starting {{items.firstSpawnDelay}} s into the match, at random free spots
+(inside the safe zone once it shrinks). Spawning pauses while {{items.maxOnMap}} spawned items are on the map.
+Spawn weights: {{derived.itemWeights}}.
 
 ### 5.11 Bushes
 - Bushes are rectangles in `info.map.bushes`. They block nothing: players, bullets, grenades and
@@ -213,6 +218,22 @@ pauses while {{items.maxOnMap}} spawned items are on the map. Spawn weights: {{d
 - Bullets, grenades, mines, items and explosions are always visible, so shooting from a bush
   shows where the shots come from.
 - You always see yourself.
+
+### 5.12 Safe zone
+- The safe zone is a circle around the **map centre**, described every tick in `state.zone`.
+  Until {{zone.shrinkStart}} s it covers the whole map. It then shrinks linearly for {{zone.shrinkDuration}} s down to a
+  radius of **{{zone.finalRadius}} u**, and stays that size.
+- At every whole second of match time, each living player whose **centre** is outside the zone
+  takes **{{zone.damagePerSecond}} damage**. Shield absorbs it first, and invulnerability blocks it.
+- Zone damage counts as noise, so it reveals a player hiding in a bush outside the zone
+  ([§5.11](#511-bushes)).
+- Dying to the zone gives nobody the kill. In `state.events` zone damage is a `hit` with
+  `weapon: 'zone'` and `attackerId` equal to the damaged player's own id.
+- The radius `t` seconds from now is
+  `radius - (radius - finalRadius) * min(1, max(0, t - shrinkStartsIn) / (shrinkEndsIn - shrinkStartsIn))`
+  (just `radius` once `shrinkEndsIn` is 0). A point is inside if
+  `(x - zone.x)² + (y - zone.y)² <= radius²`.
+- `zone.damagePerSecond` is `0` when a match turns the zone off; then it never hurts.
 
 ---
 
@@ -316,6 +337,9 @@ Your bot receives the map in `info.map` and should work on any of them.
   incoming bullet's path usually avoids it.
 - **Check line of sight** against `info.map.walls` before shooting (a segment-vs-rectangle test).
 - **Detect being stuck.** If you ask to move but `self.vx/vy` is near 0, a wall is in the way.
+  Walking straight at a target behind a wall gets you nowhere; go around it.
+- **Mind the zone.** Head for the centre before `state.zone` reaches you. Bots that hide or wait
+  for the time limit get pushed out, take damage every second, and are revealed in bushes.
 - Keep `decide` cheap. It runs {{tickRate}} times per second, next to up to {{derived.maxOpponents}} other bots.
 
 Useful helpers:

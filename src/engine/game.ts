@@ -7,6 +7,7 @@ import { handleDeaths, handleRespawns, placeAtSpawn } from './systems/lives.ts';
 import { applyMovement, applyTurning, applyWeaponSwitches } from './systems/movement.ts';
 import { checkMatchEnd } from './systems/victory.ts';
 import { initSightings, updateSightings } from './systems/visibility.ts';
+import { applyZoneDamage } from './systems/zone.ts';
 import { IDLE_ACTION, type ActionInput, type GameEvent, type GameState, type MapData, type PlayerSetup, type PlayerState } from './types.ts';
 
 export interface GameOptions {
@@ -131,7 +132,7 @@ function tickTimers(state: GameState): void {
  *
  * Order: weapon switches → turning → movement & collisions → attacks & mine
  * planting → bullets → grenades → due mines → explosions (with chain reactions) →
- * deaths → pickups → respawns, gun pads & item spawns → timers → match end.
+ * zone damage → deaths → pickups → respawns, gun pads & item spawns → timers → match end.
  */
 export function step(state: GameState, actions: readonly (ActionInput | undefined)[]): GameEvent[] {
   if (state.over) return [];
@@ -148,6 +149,7 @@ export function step(state: GameState, actions: readonly (ActionInput | undefine
   const blasts = updateGrenades(state);
   blasts.push(...dueMines(state));
   resolveExplosions(state, blasts);
+  applyZoneDamage(state);
   handleDeaths(state);
   handlePickups(state);
   handleRespawns(state);

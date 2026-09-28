@@ -1,4 +1,4 @@
-import type { GameConfig } from './config.ts';
+import { DEFAULT_CONFIG, type GameConfig } from './config.ts';
 import { applyCheat, type CheatKind } from './debug.ts';
 import { createGame, step } from './game.ts';
 import { hashState } from './hash.ts';
@@ -158,7 +158,9 @@ export function validateReplay(raw: unknown): Replay {
     if (total !== r.ticks) fail('action runs do not cover every tick');
   }
   validateMap(r.map, r.config!.player?.radius);
-  return { ...r, cheats: r.cheats ?? [], checksums: r.checksums ?? [] } as Replay;
+  // Replays recorded before the safe zone existed have no zone settings: replay them with it off.
+  const config = r.config!.zone ? r.config! : { ...r.config!, zone: { ...DEFAULT_CONFIG.zone, damagePerSecond: 0 } };
+  return { ...r, config, cheats: r.cheats ?? [], checksums: r.checksums ?? [] } as Replay;
 }
 
 /**

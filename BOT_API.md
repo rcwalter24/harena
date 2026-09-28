@@ -55,6 +55,8 @@ export function decide(state) {
   `info.timeLimit`) runs out first, survivors are ranked by lives left, then by hp + shield.
   Eliminated players rank below all survivors, and a later elimination ranks higher.
   Exact ties share a rank.
+- **The safe zone shrinks.** From 30 s the playable area closes in on the map centre, and
+  standing outside it hurts ([§5.12](#512-safe-zone)). Hiding or waiting out the clock does not work.
 - You see the whole map and everything on it. The only exception is enemies hiding in
   **bushes** ([§5.11](#511-bushes)).
 
@@ -86,10 +88,11 @@ fixed order:
 4. **Attacks**: knife swings hit instantly, and new bullets/grenades start at your centre.
 5. **Projectiles** move along their path (bullets, then grenades), hitting walls or players.
 6. **Mines** whose fuse ran out explode, then **explosions** deal damage.
-7. **Deaths**: lives are lost, gear is dropped, kills are credited.
-8. **Pickups**.
-9. **Respawns**, and gun pads refill.
-10. **Cooldowns** count down.
+7. **Zone damage** (on whole seconds) to players outside the safe zone.
+8. **Deaths**: lives are lost, gear is dropped, kills are credited.
+9. **Pickups**.
+10. **Respawns**, and gun pads refill.
+11. **Cooldowns** count down.
 
 Consequences:
 - Your action always reacts to state that is one tick old.
@@ -179,7 +182,8 @@ Consequences:
   drop where you died as items that keep their ammo. Carried mines drop as a `mines` item.
 - You respawn after 2 s with full hp, 0 shield and only the knife. The spawn point is
   random among spawn points at least 300 u from every living enemy, or the farthest one if
-  none qualifies.
+  none qualifies. Once the safe zone shrinks, only spawn points inside it count; if none is left,
+  you respawn at a free spot inside the zone, as far from enemies as possible.
 - A kill is credited to the last *other* player who damaged you in that life.
 
 ### 5.10 Items
@@ -197,8 +201,9 @@ Items are circles of radius 12. You pick one up when your centre is within
 | `launcher` | launcher + its grenades | no launcher yet, or grenades < 6 |
 | `mines` | +2 mines | mines < 3 |
 
-Random items appear every 6 s, starting 3 s into the match, at random free spots. Spawning
-pauses while 6 spawned items are on the map. Spawn weights: ammo 30, shield 25, health 25, gun 12, life 8, launcher 6, mines 10.
+Random items appear every 6 s, starting 3 s into the match, at random free spots
+(inside the safe zone once it shrinks). Spawning pauses while 6 spawned items are on the map.
+Spawn weights: ammo 30, shield 25, health 25, gun 12, life 8, launcher 6, mines 10.
 
 ### 5.11 Bushes
 - Bushes are rectangles in `info.map.bushes`. They block nothing: players, bullets, grenades and
@@ -213,6 +218,22 @@ pauses while 6 spawned items are on the map. Spawn weights: ammo 30, shield 25, 
 - Bullets, grenades, mines, items and explosions are always visible, so shooting from a bush
   shows where the shots come from.
 - You always see yourself.
+
+### 5.12 Safe zone
+- The safe zone is a circle around the **map centre**, described every tick in `state.zone`.
+  Until 30 s it covers the whole map. It then shrinks linearly for 60 s down to a
+  radius of **200 u**, and stays that size.
+- At every whole second of match time, each living player whose **centre** is outside the zone
+  takes **10 damage**. Shield absorbs it first, and invulnerability blocks it.
+- Zone damage counts as noise, so it reveals a player hiding in a bush outside the zone
+  ([§5.11](#511-bushes)).
+- Dying to the zone gives nobody the kill. In `state.events` zone damage is a `hit` with
+  `weapon: 'zone'` and `attackerId` equal to the damaged player's own id.
+- The radius `t` seconds from now is
+  `radius - (radius - finalRadius) * min(1, max(0, t - shrinkStartsIn) / (shrinkEndsIn - shrinkStartsIn))`
+  (just `radius` once `shrinkEndsIn` is 0). A point is inside if
+  `(x - zone.x)² + (y - zone.y)² <= radius²`.
+- `zone.damagePerSecond` is `0` when a match turns the zone off; then it never hurts.
 
 ---
 
@@ -367,6 +388,26 @@ export interface ExplosionView {
   radius: number;
 }
 
+/**
+ * The safe zone: a circle around the map centre that shrinks during the match.
+ * At every whole second, a player whose centre is outside it takes damage.
+ */
+export interface ZoneView {
+  /** Centre (the map centre; it never moves). */
+  x: number;
+  y: number;
+  /** Current radius. You are outside if the distance from (x, y) to your centre is greater. */
+  radius: number;
+  /** Radius once shrinking has finished. */
+  finalRadius: number;
+  /** Seconds until shrinking starts (0 once it has started). */
+  shrinkStartsIn: number;
+  /** Seconds until the final radius is reached (0 once reached). The radius shrinks linearly. */
+  shrinkEndsIn: number;
+  /** Damage per second outside the zone. 0 means the zone is off in this match. */
+  damagePerSecond: number;
+}
+
 export interface ItemView {
   id: number;
   type: ItemType;
@@ -378,7 +419,7 @@ export interface ItemView {
 export type EventView =
   | { type: 'shot'; playerId: number }
   | { type: 'swing'; playerId: number; hitIds: number[] }
-  | { type: 'hit'; attackerId: number; targetId: number; weapon: WeaponName | 'explosion'; damage: number }
+  | { type: 'hit'; attackerId: number; targetId: number; weapon: WeaponName | 'explosion' | 'zone'; damage: number }
   | { type: 'death'; playerId: number; killerId: number; livesLeft: number }
   | { type: 'eliminated'; playerId: number }
   | { type: 'respawn'; playerId: number; x: number; y: number }
@@ -402,6 +443,7 @@ export interface BotState {
   explosions: ExplosionView[];
   items: ItemView[];
   events: EventView[];
+  zone: ZoneView;
 }
 
 /**
@@ -587,6 +629,15 @@ Every value below is also available at runtime as `info.rules.<path>`, for examp
 | `bushes.revealDistance` | 90 | u | An enemy in a bush is visible to you if the centres are at most this far apart. |
 | `bushes.noiseRevealTime` | 1 | s | A player in a bush stays visible this long after attacking or taking damage. |
 
+**zone**
+
+| `info.rules.…` | Value | Unit | Meaning |
+|---|---|---|---|
+| `zone.shrinkStart` | 30 | s | Match time at which the safe zone starts shrinking (before that it covers the whole map). |
+| `zone.shrinkDuration` | 60 | s | The zone radius shrinks linearly to its final size over this long. |
+| `zone.finalRadius` | 200 | u | Radius of the zone once it has finished shrinking. Its centre is the map centre. |
+| `zone.damagePerSecond` | 10 | hp | Damage taken at every whole second of match time while your centre is outside the zone (0 = zone off). |
+
 **respawn**
 
 | `info.rules.…` | Value | Unit | Meaning |
@@ -659,6 +710,9 @@ Your bot receives the map in `info.map` and should work on any of them.
   incoming bullet's path usually avoids it.
 - **Check line of sight** against `info.map.walls` before shooting (a segment-vs-rectangle test).
 - **Detect being stuck.** If you ask to move but `self.vx/vy` is near 0, a wall is in the way.
+  Walking straight at a target behind a wall gets you nowhere; go around it.
+- **Mind the zone.** Head for the centre before `state.zone` reaches you. Bots that hide or wait
+  for the time limit get pushed out, take damage every second, and are revealed in bushes.
 - Keep `decide` cheap. It runs 30 times per second, next to up to 7 other bots.
 
 Useful helpers:
@@ -699,7 +753,7 @@ knifes anyone who gets too close while it is unarmed.
 ```js
 // Gunner: grabs weapons, keeps its distance, leads its shots and dodges projectiles.
 // Uses the gun first, the grenade launcher when out of bullets, drops mines on chasers,
-// and falls back to the knife when unarmed and an enemy gets close.
+// falls back to the knife when unarmed and an enemy gets close, and stays inside the safe zone.
 export const meta = { name: 'Gunner', author: 'Harena examples' };
 
 let rules = null;
@@ -801,6 +855,25 @@ function mineEscape(state, me) {
   return { x: dx, y: dy };
 }
 
+// Zone radius `t` seconds from now (it shrinks linearly between its start and end).
+function zoneRadiusIn(zone, t) {
+  const shrinkTime = zone.shrinkEndsIn - zone.shrinkStartsIn;
+  if (shrinkTime <= 0) return zone.radius;
+  const elapsed = Math.max(0, t - zone.shrinkStartsIn);
+  return zone.radius - (zone.radius - zone.finalRadius) * Math.min(1, elapsed / shrinkTime);
+}
+
+// Pull toward the zone centre when we are outside the zone, or will be within 3 s.
+function zonePull(state, me) {
+  const zone = state.zone;
+  if (zone.damagePerSecond === 0) return { x: 0, y: 0 };
+  const d = dist(me, zone);
+  const slack = zoneRadiusIn(zone, 3) - rules.player.radius - 30 - d;
+  if (slack > 0 || d < 1e-6) return { x: 0, y: 0 };
+  const k = Math.min(3, 0.5 - slack / 50);
+  return { x: ((zone.x - me.x) / d) * k, y: ((zone.y - me.y) / d) * k };
+}
+
 // ---------- decision ----------
 
 // Nearest living enemy, preferring ones we can see (hidden ones only have a stale position).
@@ -828,7 +901,9 @@ function wantedItems(state, me) {
     (it.type === 'health' && me.hp < rules.player.maxHp * 0.7) ||
     (it.type === 'shield' && me.shield < rules.player.maxShield) ||
     (it.type === 'life' && me.lives < rules.player.maxLives);
-  return state.items.filter(useful).sort((a, b) => dist(a, me) - dist(b, me));
+  const zoneSoon = zoneRadiusIn(state.zone, 3) - 20;
+  const safe = (it) => state.zone.damagePerSecond === 0 || dist(it, state.zone) < zoneSoon;
+  return state.items.filter((it) => useful(it) && safe(it)).sort((a, b) => dist(a, me) - dist(b, me));
 }
 
 export function decide(state) {
@@ -837,7 +912,8 @@ export function decide(state) {
   const enemy = nearestEnemy(state, me);
   const dodge = dodgeVector(state, me);
   const escape = mineEscape(state, me);
-  const avoid = { x: dodge.x * 2 + escape.x * 3, y: dodge.y * 2 + escape.y * 3 };
+  const zone = zonePull(state, me);
+  const avoid = { x: dodge.x * 2 + escape.x * 3 + zone.x, y: dodge.y * 2 + escape.y * 3 + zone.y };
   const items = wantedItems(state, me);
 
   const weapon = me.hasGun && me.ammo.gun > 0 ? 'gun' : me.hasLauncher && me.ammo.launcher > 0 ? 'launcher' : 'knife';

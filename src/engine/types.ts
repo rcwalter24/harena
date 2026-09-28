@@ -5,7 +5,7 @@ import type { Rng } from './rng.ts';
 export type Weapon = 'knife' | 'gun' | 'launcher';
 
 /** What dealt damage: a weapon, or a mine. */
-export type DamageSource = Weapon | 'mine';
+export type DamageSource = Weapon | 'mine' | 'zone';
 
 export interface SpawnPoint {
   x: number;

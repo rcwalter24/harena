@@ -1,5 +1,6 @@
-import type { BotState, EventView, InitInfo, PlayerView } from './botApi.ts';
+import type { BotState, EventView, InitInfo, PlayerView, ZoneView } from './botApi.ts';
 import { isVisibleTo } from './systems/visibility.ts';
+import { zoneAt, zoneEnabled } from './systems/zone.ts';
 import type { GameState, PlayerState } from './types.ts';
 
 /** Build the plain-data view of one player that bots see. */
@@ -44,7 +45,7 @@ function eventViews(state: GameState): EventView[] {
       case 'shot': out.push({ type: 'shot', playerId: e.playerId }); break;
       case 'swing': out.push({ type: 'swing', playerId: e.playerId, hitIds: [...e.hitIds] }); break;
       case 'hit': {
-        const weapon = e.weapon === 'knife' || e.weapon === 'gun' ? e.weapon : 'explosion';
+        const weapon = e.weapon === 'knife' || e.weapon === 'gun' || e.weapon === 'zone' ? e.weapon : 'explosion';
         out.push({ type: 'hit', attackerId: e.attackerId, targetId: e.targetId, weapon, damage: e.damage });
         break;
       }
@@ -80,6 +81,22 @@ export function buildBotState(state: GameState): Omit<BotState, 'self'> {
     explosions: state.explosions.map((e) => ({ ownerId: e.ownerId, source: e.source, x: e.x, y: e.y, radius: e.radius })),
     items: state.items.map((it) => ({ id: it.id, type: it.type, x: it.x, y: it.y })),
     events: eventViews(state),
+    zone: zoneView(state),
+  };
+}
+
+function zoneView(state: GameState): ZoneView {
+  const { config } = state;
+  const zone = zoneAt(state);
+  const on = zoneEnabled(config);
+  return {
+    x: zone.x,
+    y: zone.y,
+    radius: zone.radius,
+    finalRadius: zone.finalRadius,
+    shrinkStartsIn: on ? Math.max(0, zone.startTick - state.tick) / config.tickRate : 0,
+    shrinkEndsIn: on ? Math.max(0, zone.endTick - state.tick) / config.tickRate : 0,
+    damagePerSecond: on ? config.zone.damagePerSecond : 0,
   };
 }
 

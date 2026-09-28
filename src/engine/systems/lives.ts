@@ -2,6 +2,7 @@ import { secondsToTicks, type ItemType } from '../config.ts';
 import { DEG, dcos, dsin, length, normalizeAngle } from '../dmath.ts';
 import { resolveCircleWalls } from '../geometry.ts';
 import type { GameState, PlayerState, SpawnPoint } from '../types.ts';
+import { insideZone, randomZoneSpawn, zoneAt, zoneShrinking } from './zone.ts';
 
 /** Handle players whose hp reached 0 this tick: lose a life, drop the gun, credit the kill. */
 export function handleDeaths(state: GameState): void {
@@ -91,11 +92,22 @@ export function placeAtSpawn(state: GameState, p: PlayerState, spawn: SpawnPoint
 /**
  * A random spawn point that is at least `respawn.safeDistance` from every living
  * enemy and not blocked by a player; if none qualifies, the one farthest from
- * the nearest enemy.
+ * the nearest enemy. Once the zone shrinks, only spawn points well inside it
+ * count; with none left, a random free spot inside the zone is used.
  */
 export function pickRespawnPoint(state: GameState, self: PlayerState): SpawnPoint {
-  const { spawns } = state.map;
   const r = state.config.player.radius;
+  let spawns = state.map.spawns;
+  if (zoneShrinking(state)) {
+    const zone = zoneAt(state);
+    spawns = spawns.filter((s) => insideZone(zone, s.x, s.y, 2 * r));
+    if (spawns.length === 0) {
+      const spot = randomZoneSpawn(state, self.id);
+      if (spot) return spot;
+      // Nothing free inside (a tiny zone): the spawn point closest to its centre.
+      spawns = [...state.map.spawns].sort((a, b) => length(a.x - zone.x, a.y - zone.y) - length(b.x - zone.x, b.y - zone.y)).slice(0, 1);
+    }
+  }
   const enemies = state.players.filter((q) => q !== self && q.alive);
   const nearestEnemy = (s: SpawnPoint): number => {
     let best = Infinity;

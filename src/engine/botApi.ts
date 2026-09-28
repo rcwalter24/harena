@@ -143,6 +143,26 @@ export interface ExplosionView {
   radius: number;
 }
 
+/**
+ * The safe zone: a circle around the map centre that shrinks during the match.
+ * At every whole second, a player whose centre is outside it takes damage.
+ */
+export interface ZoneView {
+  /** Centre (the map centre; it never moves). */
+  x: number;
+  y: number;
+  /** Current radius. You are outside if the distance from (x, y) to your centre is greater. */
+  radius: number;
+  /** Radius once shrinking has finished. */
+  finalRadius: number;
+  /** Seconds until shrinking starts (0 once it has started). */
+  shrinkStartsIn: number;
+  /** Seconds until the final radius is reached (0 once reached). The radius shrinks linearly. */
+  shrinkEndsIn: number;
+  /** Damage per second outside the zone. 0 means the zone is off in this match. */
+  damagePerSecond: number;
+}
+
 export interface ItemView {
   id: number;
   type: ItemType;
@@ -154,7 +174,7 @@ export interface ItemView {
 export type EventView =
   | { type: 'shot'; playerId: number }
   | { type: 'swing'; playerId: number; hitIds: number[] }
-  | { type: 'hit'; attackerId: number; targetId: number; weapon: WeaponName | 'explosion'; damage: number }
+  | { type: 'hit'; attackerId: number; targetId: number; weapon: WeaponName | 'explosion' | 'zone'; damage: number }
   | { type: 'death'; playerId: number; killerId: number; livesLeft: number }
   | { type: 'eliminated'; playerId: number }
   | { type: 'respawn'; playerId: number; x: number; y: number }
@@ -178,6 +198,7 @@ export interface BotState {
   explosions: ExplosionView[];
   items: ItemView[];
   events: EventView[];
+  zone: ZoneView;
 }
 
 /**

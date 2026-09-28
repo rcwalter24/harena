@@ -1,5 +1,6 @@
 import type { ItemType } from '../engine/config.ts';
 import { bushAt, isVisibleTo } from '../engine/systems/visibility.ts';
+import { zoneAt, zoneEnabled } from '../engine/systems/zone.ts';
 import type { GameEvent, GameState, PlayerState } from '../engine/types.ts';
 
 export const PLAYER_COLORS = ['#4fc3f7', '#ff7043', '#9ccc65', '#ba68c8', '#ffd54f', '#4db6ac', '#f06292', '#a1887f'];
@@ -152,6 +153,7 @@ export class Renderer {
 
     this.drawArena(state);
     this.drawBushes(state);
+    this.drawZone(state, alpha);
     this.drawPads(state);
     this.drawItems(state);
     this.drawMines(state);
@@ -233,6 +235,45 @@ export class Renderer {
       ctx.fillStyle = '#4b5366';
       ctx.fillRect(w.x, w.y, w.w, Math.min(4, w.h));
     }
+  }
+
+  /**
+   * Safe zone: the area outside is tinted, the current edge is a solid line, and the final
+   * circle is dashed from 10 s before shrinking starts.
+   */
+  private drawZone(state: GameState, alpha: number): void {
+    if (!zoneEnabled(state.config)) return;
+    const { ctx } = this;
+    const { width, height } = state.map;
+    const zone = zoneAt(state);
+    const r = lerp(zoneAt(state, Math.max(0, state.tick - 1)).radius, zone.radius, alpha);
+    const announce = zone.startTick - 10 * state.config.tickRate;
+    ctx.save();
+    ctx.beginPath();
+    ctx.rect(0, 0, width, height);
+    ctx.clip();
+    if (r < zone.startRadius) {
+      ctx.beginPath();
+      ctx.rect(0, 0, width, height);
+      ctx.arc(zone.x, zone.y, r, 0, Math.PI * 2);
+      ctx.fillStyle = 'rgba(226, 103, 74, 0.14)';
+      ctx.fill('evenodd');
+      ctx.strokeStyle = '#e2674a';
+      ctx.lineWidth = 3;
+      ctx.beginPath();
+      ctx.arc(zone.x, zone.y, r, 0, Math.PI * 2);
+      ctx.stroke();
+    }
+    if (state.tick >= announce && zone.finalRadius < r - 1) {
+      ctx.strokeStyle = 'rgba(226, 103, 74, 0.55)';
+      ctx.lineWidth = 2;
+      ctx.setLineDash([12, 10]);
+      ctx.beginPath();
+      ctx.arc(zone.x, zone.y, zone.finalRadius, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.setLineDash([]);
+    }
+    ctx.restore();
   }
 
   /** Flat bushes in the same style as walls: rounded, hatched, with a crisp edge. */
