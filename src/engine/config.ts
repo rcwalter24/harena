@@ -162,8 +162,8 @@ export const DEFAULT_CONFIG: GameConfig = {
     maxHp: 100,
     maxShield: 100,
     startShield: 0,
-    startLives: 3,
-    maxLives: 5,
+    startLives: 5,
+    maxLives: 7,
     switchTime: 0.3,
   },
   knife: {

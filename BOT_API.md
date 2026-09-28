@@ -48,7 +48,7 @@ export function decide(state) {
 - Matches have 1–8 players. It is **free-for-all**: everyone else is an enemy.
   The same bot file may appear several times; each copy runs separately and cannot
   talk to the others.
-- Everyone starts with **3 lives**, 100 hp, 0 shield and only a **knife**.
+- Everyone starts with **5 lives**, 100 hp, 0 shield and only a **knife**.
 - When hp reaches 0 you lose a life. If you have lives left, you respawn after
   2 s. With no lives left you are **eliminated**.
 - **The last player not eliminated wins.** If the time limit (default 180 s,
@@ -258,7 +258,7 @@ Items are circles of radius 12. You pick one up when your centre is within
 |---|---|---|
 | `health` | +40 hp | hp < 100 |
 | `shield` | +50 shield | shield < 100 |
-| `life` | +1 life | lives < 5 |
+| `life` | +1 life | lives < 7 |
 | `ammo` | +10 gun ammo | you have a gun and ammo < 40 |
 | `gun` | gun + its ammo | no gun yet, or gun ammo < 40 |
 | `launcher` | launcher + its grenades | no launcher yet, or grenades < 6 |
@@ -733,8 +733,8 @@ Every value below is also available at runtime as `info.rules.<path>`, for examp
 | `player.maxHp` | 100 | hp | Health at spawn and the health cap. |
 | `player.maxShield` | 100 | shield | Shield cap. Shield absorbs damage before health. |
 | `player.startShield` | 0 | shield | Shield at every spawn and respawn. |
-| `player.startLives` | 3 | lives | Lives at match start (including the current one). |
-| `player.maxLives` | 5 | lives | Lives cap; extra-life items are not picked up at the cap. |
+| `player.startLives` | 5 | lives | Lives at match start (including the current one). |
+| `player.maxLives` | 7 | lives | Lives cap; extra-life items are not picked up at the cap. |
 | `player.switchTime` | 0.3 | s | After switching weapons you cannot attack for this long. |
 
 **knife**

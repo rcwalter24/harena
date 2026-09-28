@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { DEFAULT_CONFIG } from '../../src/engine/config.ts';
 import { step } from '../../src/engine/game.ts';
 import { act, place, testGame } from '../helpers.ts';
 
@@ -17,10 +18,10 @@ describe('death and respawn', () => {
     const events = step(s, [act({ attack: true })]);
     const victim = s.players[1];
     expect(victim.alive).toBe(false);
-    expect(victim.lives).toBe(2);
+    expect(victim.lives).toBe(DEFAULT_CONFIG.player.startLives - 1);
     expect(victim.stats.deaths).toBe(1);
     expect(s.players[0].stats.kills).toBe(1);
-    expect(events).toContainEqual(expect.objectContaining({ type: 'death', playerId: 1, killerId: 0, weapon: 'knife', livesLeft: 2 }));
+    expect(events).toContainEqual(expect.objectContaining({ type: 'death', playerId: 1, killerId: 0, weapon: 'knife', livesLeft: DEFAULT_CONFIG.player.startLives - 1 }));
   });
 
   it('drops the gun with its ammo on death', () => {
