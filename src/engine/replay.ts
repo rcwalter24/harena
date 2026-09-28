@@ -173,6 +173,8 @@ export function validateReplay(raw: unknown): Replay {
   if (config.bushes.hideLimit === undefined) config = { ...config, bushes: { ...config.bushes, hideLimit: 0, rehideTime: 0 } };
   // Before explosions blew holes in clouds.
   if (config.explosions.clearTime === undefined) config = { ...config, explosions: { ...config.explosions, clearTime: 0 } };
+  // Before holes reached further than the blast could hurt.
+  if (config.explosions.clearScale === undefined) config = { ...config, explosions: { ...config.explosions, clearScale: 1 } };
   // Before explosions went around corners, any wall on the straight line shielded completely.
   if (config.explosions.aroundCorners === undefined) config = { ...config, explosions: { ...config.explosions, aroundCorners: 0 } };
   // Before clouds spread over time and around corners, they were full-size circles at once.

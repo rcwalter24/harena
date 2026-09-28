@@ -146,17 +146,31 @@ describe('explosions and clouds', () => {
     for (let i = 0; i < 40; i++) step(s, []);
     const c = s.clouds[0];
     expect(insideCloud(s, c, 400, 500)).toBe(true);
-    resolveExplosions(s, [{ ownerId: 1, source: 'grenade', sourceId: 99, x: 420, y: 500, radius: DEFAULT_CONFIG.launcher.blastRadius }]);
+    const { launcher, player, explosions } = DEFAULT_CONFIG;
+    resolveExplosions(s, [{ ownerId: 1, source: 'grenade', sourceId: 99, x: 480, y: 500, radius: launcher.blastRadius }]);
     expect(c.holes).toHaveLength(1);
+    expect(c.holes[0].radius).toBe((launcher.blastRadius + player.radius) * explosions.clearScale);
     expect(insideCloud(s, c, 400, 500)).toBe(false); // blown clear
-    expect(insideCloud(s, c, 400, 600)).toBe(true); // out of the blast's reach: still smoky
-    expect(buildBotState(s).clouds[0].holes[0]).toMatchObject({ x: 420, y: 500 });
-    const close = DEFAULT_CONFIG.explosions.clearTime * 30;
+    expect(launcher.blastRadius + player.radius).toBeLessThan(130);
+    expect(insideCloud(s, c, 350, 500)).toBe(false); // 130 u away: beyond where it could hurt, still cleared
+    expect(insideCloud(s, c, 300, 500)).toBe(true); // out of the hole: still smoky
+    expect(buildBotState(s).clouds[0].holes[0]).toMatchObject({ x: 480, y: 500 });
+    const close = explosions.clearTime * 30;
     for (let i = 0; i < close * 0.8; i++) step(s, []);
-    // The hole shrinks toward the blast point: at 80% of clearTime it is 20% of its size, so 20 u away is smoky again.
+    // The hole shrinks toward the blast point: at 80% of clearTime it is 20% of its size, so 80 u away is smoky again.
     expect(insideCloud(s, c, 400, 500)).toBe(true);
     for (let i = 0; i < close; i++) step(s, []);
     expect(c.holes).toHaveLength(0);
+  });
+
+  it('old replays load with holes as far as the blast could hurt', () => {
+    const { clearScale: _c, ...oldExplosions } = DEFAULT_CONFIG.explosions;
+    const replay = validateReplay({
+      format: 'harena-replay', version: 1, seed: 's', timeLimit: 0, ticks: 0, map: testGame().map,
+      config: { ...DEFAULT_CONFIG, explosions: oldExplosions },
+      players: [{ name: 'A', kind: 'dummy', source: 'idle' }], actions: [[]], createdAt: '',
+    });
+    expect(replay.config.explosions.clearScale).toBe(1);
   });
 
   it('a gas hole means no gas damage there', () => {

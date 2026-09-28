@@ -170,8 +170,8 @@ export function resolveExplosions(state: GameState, queue: Explosion[]): void {
       if (dealt > 0) hitIds.push(p.id);
     }
     if (e.source === 'grenade' && hitIds.some((id) => id !== e.ownerId)) owner.stats.grenadeHits++;
-    // The blast also clears smoke and gas where it reaches, for a moment.
-    blowHoles(state, e.x, e.y, e.radius + config.player.radius);
+    // The blast also clears smoke and gas, further than it can hurt, for a moment.
+    blowHoles(state, e.x, e.y, (e.radius + config.player.radius) * config.explosions.clearScale);
     state.explosions.push(e);
     state.events.push({ type: 'explosion', tick: state.tick, ownerId: e.ownerId, source: e.source, sourceId: e.sourceId, x: e.x, y: e.y, radius: e.radius, hitIds });
   }
