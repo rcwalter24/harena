@@ -1,0 +1,46 @@
+# Harena – notes for AI assistants
+
+Top-down 2D arena where AI-written bots fight. TypeScript + Vite, Canvas 2D, no engine/framework.
+See README.md for commands and layout. The original phased plan (all 6 phases done) is in the
+git history; this file lists the rules that must keep holding.
+
+## Invariants (don't break these)
+
+- **Engine is pure and deterministic** (`src/engine/`): no DOM, no Node APIs (checked by
+  `tsconfig.engine.json`). Use only `+ - * / %`, `Math.sqrt/floor/round/min/max/abs` and the
+  polynomial `sincos` in `dmath.ts` — never `Math.sin/cos/atan2/hypot` in engine code (they can
+  differ between JS engines and break replays). All randomness via seeded `Rng` streams
+  (`state.rng.spawns`, `state.rng.items`); bots get a seeded `Math.random` per seat.
+- **Every rule number lives in `src/engine/config.ts`**, and every leaf needs a `CONFIG_DOCS`
+  entry (a test enforces this).
+- **`BOT_API.md` is generated** from `docs/BOT_API.template.md` + config + `src/engine/botApi.ts`
+  + `bots/gunner.js`. Never edit it by hand; run `npm run docs`. A test fails when it is stale.
+  Any rule/number/type change must also update the template prose.
+- **Bot API is effectively frozen**: bots written by other AIs depend on `botApi.ts`. Only add
+  optional fields; never rename/remove. Bot-visible timers are seconds; engine timers are ticks.
+- **Replays record normalized actions**: `MatchRunner` passes every action through
+  `normalizeAction` before `step()`. Anything that mutates state outside `step()` (e.g. debug
+  cheats) must go through `engine/debug.ts` and be recorded (`ReplayRecorder.recordCheat`).
+  `hashState` must cover all simulation state (add new fields to it).
+- **Tick order** is documented in `game.ts` `step()` and in BOT_API.md §4 — keep them in sync.
+- **Visibility**: bots and a human player only see what `isVisibleTo` allows (bushes). The
+  renderer takes `viewerId` for the human; spectators see everything. Scripted dummies also
+  respect visibility. Don't leak hidden positions through events.
+- **Sandbox**: bots run in Web Workers (browser) / worker_threads (Node) via the shared
+  `src/sandbox/harness.ts`; `BotController` (`src/match/supervisor.ts`) enforces budgets,
+  failure streaks and hang → restart once → disable. This is isolation, not a hard security
+  boundary.
+- **Bot review**: `staticCheck` errors block a bot (UI, batch CLI); Jev (TypeSafe) findings are
+  advisory only. The TypeSafe key is read at runtime from `TYPESAFE_API_KEY` or
+  `~/.secrets/typesafe` in Node only — never log, copy or send it to the browser. Jev model is
+  pinned to `jev-1.13.0`.
+
+## Conventions
+
+- Node 26 runs `.ts` directly (type stripping): use `.ts` import extensions and erasable syntax
+  only (no enums/namespaces/parameter properties).
+- Code, comments, docs and commit messages in English; UI text English.
+- Commit messages: no `Co-Authored-By` or any AI attribution.
+- Maps are JSON in `maps/` (one entity per line); tests check validity and reachability.
+- Run `npm run typecheck && npm test` before committing; UI changes are verified in a real
+  browser (headless Chrome screenshots), not just by tests.
