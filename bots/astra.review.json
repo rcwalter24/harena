@@ -1,8 +1,8 @@
 {
   "version": 1,
   "file": "astra.js",
-  "sourceHash": "0120d37d456901",
-  "reviewedAt": "2026-09-28T13:48:53.279Z",
+  "sourceHash": "021d13f337a358",
+  "reviewedAt": "2026-09-28T15:35:19.225Z",
   "static": {
     "ok": true,
     "findings": []
@@ -13,21 +13,21 @@
       "outsideAccess": 0.02,
       "globalTampering": 0.08,
       "backgroundWork": 0.03,
-      "obfuscation": 0.05,
+      "obfuscation": 0.06,
       "actionExploit": 0.03,
       "reviewerInjection": 0.03
     },
     "conformance": {
       "choice": "follows",
       "confidence": 0.96,
-      "follows": 0.97
+      "follows": 0.98
     },
     "quality": {
-      "score": 3,
-      "confidence": 1,
+      "score": 2.99,
+      "confidence": 0.99,
       "max": 3
     },
-    "inputTokens": 11008
+    "inputTokens": 11837
   },
   "verdict": "pass",
   "reasons": []
