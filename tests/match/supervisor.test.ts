@@ -80,7 +80,9 @@ describe('BotController (node worker_threads)', () => {
   });
 
   it('reuses the last valid action on failure, then recovers', async () => {
-    const { bot, runner } = await setup('flaky');
+    // Slow ticks take 150 ms: over the 50 ms budget, but their reply arrives well before the 350 ms
+    // deadline, even on a busy machine (which must not turn the normal ticks into timeouts either).
+    const { bot, runner } = await setup('flaky', 'seed', { ...SANDBOX, decideBudgetMs: 50, graceMs: 300 });
     const actions = await ticks(runner, 8);
     expect(actions[0].moveY).toBe(1);
     expect(actions[2].moveY).toBe(1); // tick 2 too slow: last action reused
