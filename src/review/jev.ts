@@ -1,4 +1,5 @@
 import { choice, noul, score, type Questions } from '@typesafe-ai/sdk';
+import { ACTION_FIELDS } from '../engine/sanitize.ts';
 import { staticCheck, sourceHash, stripCommentsAndStrings, type StaticCheckResult } from './staticCheck.ts';
 
 /**
@@ -22,11 +23,12 @@ export const JEV_MODEL = 'jev-1.13.0';
 export const RISK_WARN = 0.35;
 export const RISK_DANGER = 0.7;
 
-const INTERFACE_SUMMARY =
+/** Built from the validator's field list, so new action fields and weapons are never missing here. */
+export const INTERFACE_SUMMARY =
   'This is a bot for a 2D arena game. It must be one self-contained JavaScript module that exports ' +
   'init(info) and decide(state). decide(state) runs once per game tick and synchronously returns an action ' +
-  'object {move: {x, y}, aim: number, attack: boolean, weapon: "knife" | "gun" | "launcher", plantMine: boolean}. ' +
-  'A bot should only compute its next action from the state it is given.';
+  `object whose fields are all optional: {${Object.entries(ACTION_FIELDS).map(([k, t]) => `${k}: ${t}`).join(', ')}}. ` +
+  'Returning null or {} means doing nothing. A bot should only compute its next action from the state it is given.';
 
 export const RISK_QUESTIONS = {
   outsideAccess: 'The code sends or receives data over the network, or reaches for things outside the game such as files, the web page, storage, or other programs.',
@@ -49,7 +51,7 @@ export const RISK_LABELS: Record<RiskKey, string> = {
 };
 
 const CONFORMANCE = {
-  follows: 'Exports init and decide; decide synchronously returns an action object with fields such as move, aim, attack, weapon or plantMine.',
+  follows: `Exports init and decide; decide synchronously returns an action object with fields such as ${Object.keys(ACTION_FIELDS).join(', ')}.`,
   partial: 'Mostly follows the interface but has a missing export or returns a slightly different shape.',
   broken: 'Does not follow the interface.',
 } as const;

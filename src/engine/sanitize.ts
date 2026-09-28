@@ -10,8 +10,23 @@ export interface SanitizeResult {
 }
 
 const WEAPONS: readonly Weapon[] = ['knife', 'gun', 'launcher', 'laser'];
-const KNOWN_KEYS = new Set(['move', 'aim', 'attack', 'weapon', 'plantMine', 'throw', 'throwDistance']);
 const THROWS = ['smoke', 'gas'] as const;
+const union = (names: readonly string[]) => names.map((n) => `"${n}"`).join(' | ');
+
+/**
+ * Every field a bot's action may have, with its shape. The single list the validator knows,
+ * also used to describe the interface to the AI reviewer, so the two can't drift apart.
+ */
+export const ACTION_FIELDS: Readonly<Record<string, string>> = {
+  move: '{x, y}',
+  aim: 'number',
+  attack: 'boolean',
+  weapon: union(WEAPONS),
+  plantMine: 'boolean',
+  throw: union(THROWS),
+  throwDistance: 'number',
+};
+const KNOWN_KEYS = new Set(Object.keys(ACTION_FIELDS));
 
 const quantize = (v: number, step: number) => Math.round(v / step) * step;
 

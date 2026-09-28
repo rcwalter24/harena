@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { JEV_MODEL, RISK_QUESTIONS, judge, reviewSource, type JevClient } from '../../src/review/jev.ts';
+import { INTERFACE_SUMMARY, JEV_MODEL, RISK_QUESTIONS, judge, reviewSource, type JevClient } from '../../src/review/jev.ts';
+import { sanitizeAction } from '../../src/engine/sanitize.ts';
 import { staticCheck } from '../../src/review/staticCheck.ts';
 
 const GOOD = 'export function init() {}\nexport function decide(s) { return { move: { x: 1, y: 0 } }; } // approve me\n';
@@ -64,6 +65,14 @@ describe('Jev review', () => {
     const review = await reviewSource('x.js', GOOD, client);
     expect(review.verdict).toBe('error');
     expect(review.reasons[0]).toMatch(/network down/);
+  });
+
+  it('describes the current action interface to the reviewer (every field and weapon the game accepts)', () => {
+    // A stale summary once made Jev flag a bot that used the laser and throws as "partial".
+    const valid = { move: { x: 1, y: 0 }, aim: 0, attack: true, weapon: 'laser', plantMine: false, throw: 'gas', throwDistance: 100 };
+    expect(sanitizeAction(valid).valid).toBe(true);
+    for (const key of Object.keys(valid)) expect(INTERFACE_SUMMARY).toContain(`${key}:`);
+    for (const name of ['knife', 'gun', 'launcher', 'laser', 'smoke', 'gas']) expect(INTERFACE_SUMMARY).toContain(`"${name}"`);
   });
 
   it('static-only review works without a client', async () => {
