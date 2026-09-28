@@ -1,6 +1,6 @@
 import { secondsToTicks } from '../config.ts';
 import { length } from '../dmath.ts';
-import { lineOfSight, segmentCircleHit, segmentRectHit } from '../geometry.ts';
+import { lineOfSight, pathAroundWalls, segmentCircleHit, segmentRectHit } from '../geometry.ts';
 import { solidRects, type ActionInput, type Explosion, type GameState, type PlayerState } from '../types.ts';
 import { applyDamage } from './combat.ts';
 
@@ -94,15 +94,53 @@ export function blastDamage(center: number, edge: number, radius: number, distan
 }
 
 /**
+ * Damage a player centred at (px, py) takes from a `source` blast at (bx, by), before the
+ * self-damage factor (0 if out of reach). Measured to the player's edge. Walls stop the blast,
+ * but it spreads around wall corners: the distance that counts is the shortest path around
+ * walls. With explosions.aroundCorners 0 (old replays) a wall on the straight line shields.
+ * The renderer uses this too, to shade blast areas by damage.
+ */
+export function blastDamageAt(state: GameState, source: 'grenade' | 'mine', bx: number, by: number, px: number, py: number): number {
+  const { config } = state;
+  const r = config.player.radius;
+  const { blastRadius, centerDamage, edgeDamage } = source === 'grenade' ? config.launcher : config.mines;
+  let distance = length(px - bx, py - by) - r;
+  if (distance > blastRadius) return 0;
+  if (config.explosions.aroundCorners > 0) {
+    const path = pathAroundWalls(bx, by, px, py, state.map.walls, blastRadius + r);
+    if (path === Infinity) return 0;
+    distance = path - r;
+  } else if (!lineOfSight(bx, by, px, py, state.map.walls)) {
+    return 0;
+  }
+  return blastDamage(centerDamage, edgeDamage, blastRadius, distance);
+}
+
+/** Where a flying grenade will explode if no player gets in the way: a wall, or the end of its range. */
+export function grenadeImpact(state: GameState, g: { x: number; y: number; vx: number; vy: number; traveled: number }): { x: number; y: number } {
+  const { launcher } = state.config;
+  const left = Math.max(0, launcher.range - g.traveled);
+  const x1 = g.x + (g.vx / launcher.grenadeSpeed) * left;
+  const y1 = g.y + (g.vy / launcher.grenadeSpeed) * left;
+  let hitT = 1;
+  for (const wall of solidRects(state.map)) {
+    const t = segmentRectHit(g.x, g.y, x1, y1, wall, launcher.grenadeRadius);
+    if (t !== null && t < hitT) hitT = t;
+  }
+  return { x: g.x + (x1 - g.x) * hitT, y: g.y + (y1 - g.y) * hitT };
+}
+
+/**
  * Resolve a queue of explosions in order. Each explosion first detonates every
  * mine within its radius (they join the end of the queue: chain reactions),
  * then damages every living player within radius (measured to the player's
- * edge) that has line of sight to the blast centre. Owners take
+ * edge). Walls stop the blast, but it spreads around wall corners: the distance
+ * that counts is the shortest path around walls (with explosions.aroundCorners 0,
+ * as in old replays, a wall anywhere on the straight line shields). Owners take
  * explosions.selfDamageFactor × damage from their own blasts.
  */
 export function resolveExplosions(state: GameState, queue: Explosion[]): void {
   const { config } = state;
-  const r = config.player.radius;
   for (let i = 0; i < queue.length; i++) {
     const e = queue[i];
 
@@ -116,14 +154,11 @@ export function resolveExplosions(state: GameState, queue: Explosion[]): void {
     }
 
     const owner: PlayerState = state.players[e.ownerId];
-    const { centerDamage, edgeDamage } = e.source === 'grenade' ? config.launcher : config.mines;
     const hitIds: number[] = [];
     for (const p of state.players) {
       if (!p.alive || p.hp <= 0) continue;
-      const distance = length(p.x - e.x, p.y - e.y) - r;
-      if (distance > e.radius) continue;
-      if (!lineOfSight(e.x, e.y, p.x, p.y, state.map.walls)) continue;
-      let amount = blastDamage(centerDamage, edgeDamage, e.radius, distance);
+      let amount = blastDamageAt(state, e.source, e.x, e.y, p.x, p.y);
+      if (amount <= 0) continue;
       if (p.id === e.ownerId) amount = Math.round(amount * config.explosions.selfDamageFactor);
       const dealt = applyDamage(state, p, amount, owner, e.source === 'grenade' ? 'launcher' : 'mine');
       if (dealt > 0) hitIds.push(p.id);

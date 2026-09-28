@@ -171,6 +171,8 @@ export function validateReplay(raw: unknown): Replay {
   let config = r.config!.zone ? r.config! : { ...r.config!, zone: { ...DEFAULT_CONFIG.zone, damagePerSecond: 0 } };
   if (config.player.accelTime === undefined) config = { ...config, player: { ...config.player, accelTime: 0 } };
   if (config.bushes.hideLimit === undefined) config = { ...config, bushes: { ...config.bushes, hideLimit: 0, rehideTime: 0 } };
+  // Before explosions went around corners, any wall on the straight line shielded completely.
+  if (config.explosions.aroundCorners === undefined) config = { ...config, explosions: { ...config.explosions, aroundCorners: 0 } };
   // Before smoke and gas grenades: none spawn and none can be carried.
   if (config.throwing === undefined) {
     config = {

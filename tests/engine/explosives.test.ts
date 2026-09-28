@@ -1,7 +1,7 @@
 import { DEFAULT_CONFIG } from '../../src/engine/config.ts';
 import { describe, expect, it } from 'vitest';
 import { step } from '../../src/engine/game.ts';
-import { blastDamage } from '../../src/engine/systems/explosives.ts';
+import { blastDamage, blastDamageAt } from '../../src/engine/systems/explosives.ts';
 import { buildBotState } from '../../src/engine/snapshot.ts';
 import type { GameState } from '../../src/engine/types.ts';
 import { act, place, testGame } from '../helpers.ts';
@@ -257,5 +257,31 @@ describe('default tuning', () => {
     const full = DEFAULT_CONFIG.player.maxHp + DEFAULT_CONFIG.player.maxShield;
     expect(DEFAULT_CONFIG.launcher.centerDamage).toBeGreaterThanOrEqual(full);
     expect(DEFAULT_CONFIG.mines.centerDamage).toBeGreaterThanOrEqual(full);
+  });
+});
+
+describe('explosions around corners', () => {
+  // A long vertical wall from y = 300 to the bottom edge.
+  const walls = [{ x: 500, y: 300, w: 40, h: 700 }];
+
+  it('reach a player just around a wall corner, weakened by the detour', () => {
+    const s = testGame({ walls });
+    const straight = blastDamageAt(s, 'grenade', 490, 320, 440, 320); // same side, 50 u away
+    const around = blastDamageAt(s, 'grenade', 490, 320, 560, 320); // other side, over the top corner
+    expect(around).toBeGreaterThan(0);
+    expect(around).toBeLessThan(straight);
+    // Detour: to (499.5, 299.5), across to (540.5, 299.5), down to (560, 320).
+    const path = Math.hypot(9.5, 20.5) + 41 + Math.hypot(19.5, 20.5);
+    expect(around).toBe(blastDamage(DEFAULT_CONFIG.launcher.centerDamage, DEFAULT_CONFIG.launcher.edgeDamage, 80, path - 16));
+  });
+
+  it('do not reach a player behind the middle of a long wall', () => {
+    const s = testGame({ walls });
+    expect(blastDamageAt(s, 'mine', 490, 600, 560, 600)).toBe(0);
+  });
+
+  it('with aroundCorners 0 (old replays) any wall on the straight line shields', () => {
+    const s = testGame({ walls, config: { explosions: { aroundCorners: 0 } } });
+    expect(blastDamageAt(s, 'grenade', 490, 320, 560, 320)).toBe(0);
   });
 });

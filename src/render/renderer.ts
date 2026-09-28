@@ -1,4 +1,5 @@
 import { secondsToTicks } from '../engine/config.ts';
+import { blastDamageAt, grenadeImpact } from '../engine/systems/explosives.ts';
 import { laserSegments } from '../engine/systems/laser.ts';
 import { bushAt, hideLeft, isExposed, isVisibleTo } from '../engine/systems/visibility.ts';
 import { zoneAt, zoneEnabled } from '../engine/systems/zone.ts';
@@ -43,7 +44,20 @@ interface Effect {
   spread?: number;
   /** Laser: x0, y0, x1, y1, … of the beam. */
   points?: number[];
+  /** Explosion: its damage map. */
+  field?: BlastField;
 }
+
+/** A blast's damage map: darker where a player standing there would take more damage. */
+interface BlastField {
+  image: CanvasImageSource;
+  x: number;
+  y: number;
+  size: number;
+}
+
+/** World units per cell of a blast damage map. */
+const FIELD_CELL = 3;
 
 export interface RenderOptions {
   debug: boolean;
@@ -87,6 +101,7 @@ export class Renderer {
   private offsetX = 0;
   private offsetY = 0;
   private effects: Effect[] = [];
+  private fields = new Map<string, BlastField>();
 
   constructor(canvas: HTMLCanvasElement | OffscreenCanvas, options: RendererOptions = {}) {
     this.canvas = canvas;
@@ -107,6 +122,44 @@ export class Renderer {
   /** Convert a mouse position (CSS pixels relative to the canvas) to world coordinates. */
   screenToWorld(px: number, py: number): { x: number; y: number } {
     return { x: (px - this.offsetX) / this.scale, y: (py - this.offsetY) / this.scale };
+  }
+
+  /**
+   * The damage map of a blast at (x, y): each cell is shaded by the damage a player whose centre
+   * stands there would take (the engine's own rule, so walls cast shadows and the blast wraps
+   * around corners). Cached: mines and grenade impact points don't move.
+   */
+  private blastField(state: GameState, source: 'grenade' | 'mine', x: number, y: number): BlastField {
+    const key = `${state.map.id}|${source}|${x}|${y}|${state.config.explosions.aroundCorners}`;
+    const cached = this.fields.get(key);
+    if (cached) return cached;
+    const { centerDamage, blastRadius } = source === 'grenade' ? state.config.launcher : state.config.mines;
+    const reach = blastRadius + state.config.player.radius;
+    const n = Math.ceil((2 * reach) / FIELD_CELL);
+    const x0 = x - (n * FIELD_CELL) / 2;
+    const y0 = y - (n * FIELD_CELL) / 2;
+    const canvas = typeof OffscreenCanvas !== 'undefined' ? new OffscreenCanvas(n, n) : Object.assign(document.createElement('canvas'), { width: n, height: n });
+    const cctx = canvas.getContext('2d') as CanvasRenderingContext2D | OffscreenCanvasRenderingContext2D;
+    const img = cctx.createImageData(n, n);
+    for (let j = 0; j < n; j++) {
+      for (let i = 0; i < n; i++) {
+        const px = x0 + (i + 0.5) * FIELD_CELL;
+        const py = y0 + (j + 0.5) * FIELD_CELL;
+        if (px < 0 || py < 0 || px > state.map.width || py > state.map.height) continue;
+        const damage = blastDamageAt(state, source, x, y, px, py);
+        if (damage <= 0) continue;
+        const k = 4 * (j * n + i);
+        img.data[k] = 255;
+        img.data[k + 1] = 64;
+        img.data[k + 2] = 48;
+        img.data[k + 3] = Math.round(255 * (0.12 + 0.78 * Math.min(1, damage / centerDamage)));
+      }
+    }
+    cctx.putImageData(img, 0, 0);
+    const field = { image: canvas, x: x0, y: y0, size: n * FIELD_CELL };
+    if (this.fields.size > 64) this.fields.clear();
+    this.fields.set(key, field);
+    return field;
   }
 
   /** Turn engine events into short-lived visual effects. */
@@ -133,7 +186,10 @@ export class Renderer {
           this.effects.push({ kind: 'laser', x: 0, y: 0, angle: 0, text: '', color: playerColor(e.playerId), born: now, life: 550, points: e.path });
           break;
         case 'explosion':
-          this.effects.push({ kind: 'explosion', x: e.x, y: e.y, angle: 0, text: '', color: playerColor(e.ownerId), born: now, life: 450, size: e.radius });
+          this.effects.push({
+            kind: 'explosion', x: e.x, y: e.y, angle: 0, text: '', color: playerColor(e.ownerId), born: now, life: 600, size: e.radius,
+            field: this.blastField(state, e.source, e.x, e.y),
+          });
           break;
         case 'bulletEnd':
           this.effects.push({ kind: 'puff', x: e.x, y: e.y, angle: 0, text: '', color: '#ffe08a', born: now, life: 160 });
@@ -474,6 +530,14 @@ export class Renderer {
 
   private drawGrenades(state: GameState, prev: FrameCapture | null, alpha: number): void {
     const { ctx } = this;
+    // Where each grenade will go off if nobody is in the way, shaded by damage.
+    for (const g of state.grenades) {
+      const impact = grenadeImpact(state, g);
+      const field = this.blastField(state, 'grenade', Math.round(impact.x), Math.round(impact.y));
+      ctx.globalAlpha = 0.35;
+      ctx.drawImage(field.image, field.x, field.y, field.size, field.size);
+      ctx.globalAlpha = 1;
+    }
     // Drawn a little larger than the hitbox so it reads at small scales.
     const r = state.config.launcher.grenadeRadius * 1.4;
     for (const g of state.grenades) {
@@ -507,22 +571,16 @@ export class Renderer {
   private drawMines(state: GameState): void {
     const { ctx } = this;
     const fuseTicks = state.config.mines.fuse * state.config.tickRate;
-    const blast = state.config.mines.blastRadius;
     const now = this.clock();
     for (const m of state.mines) {
       const color = playerColor(m.ownerId);
       const left = m.fuseTimer / fuseTicks;
       const secondsLeft = m.fuseTimer / state.config.tickRate;
-      // Danger zone fades in during the last second.
-      if (secondsLeft < 1) {
-        ctx.fillStyle = `rgba(255,77,77,${0.12 * (1 - secondsLeft)})`;
-        ctx.strokeStyle = `rgba(255,77,77,${0.5 * (1 - secondsLeft)})`;
-        ctx.lineWidth = 1.5;
-        ctx.beginPath();
-        ctx.arc(m.x, m.y, blast, 0, Math.PI * 2);
-        ctx.fill();
-        ctx.stroke();
-      }
+      // Where it will hurt, shaded by damage; stronger as the fuse runs out.
+      const field = this.blastField(state, 'mine', m.x, m.y);
+      ctx.globalAlpha = 0.2 + 0.55 * (1 - left) + (secondsLeft < 1 ? 0.2 * (1 - secondsLeft) : 0);
+      ctx.drawImage(field.image, field.x, field.y, field.size, field.size);
+      ctx.globalAlpha = 1;
       ctx.fillStyle = '#23262e';
       ctx.beginPath();
       ctx.arc(m.x, m.y, 11, 0, Math.PI * 2);
@@ -697,22 +755,20 @@ export class Renderer {
           ctx.fill();
           break;
         case 'explosion': {
-          const radius = e.size ?? 0;
-          ctx.globalAlpha = 0.55 * (1 - t);
-          const fill = ctx.createRadialGradient(e.x, e.y, 0, e.x, e.y, radius);
+          // The blast takes the shape of its damage map (walls cast shadows), with a hot core.
+          if (e.field) {
+            ctx.globalAlpha = 0.95 * (1 - t);
+            ctx.drawImage(e.field.image, e.field.x, e.field.y, e.field.size, e.field.size);
+          }
+          const core = (e.size ?? 0) * 0.45;
+          ctx.globalAlpha = 0.8 * (1 - t);
+          const fill = ctx.createRadialGradient(e.x, e.y, 0, e.x, e.y, core);
           fill.addColorStop(0, '#fff3c4');
-          fill.addColorStop(0.4, '#ffb347');
-          fill.addColorStop(1, 'rgba(255,90,40,0)');
+          fill.addColorStop(1, 'rgba(255,179,71,0)');
           ctx.fillStyle = fill;
           ctx.beginPath();
-          ctx.arc(e.x, e.y, radius * (0.6 + 0.4 * Math.min(1, t * 3)), 0, Math.PI * 2);
+          ctx.arc(e.x, e.y, core, 0, Math.PI * 2);
           ctx.fill();
-          ctx.globalAlpha = 1 - t;
-          ctx.strokeStyle = e.color;
-          ctx.lineWidth = 2;
-          ctx.beginPath();
-          ctx.arc(e.x, e.y, radius, 0, Math.PI * 2);
-          ctx.stroke();
           break;
         }
         case 'laser': {

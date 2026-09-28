@@ -170,6 +170,52 @@ export function segmentRectEntry(x: number, y: number, dx: number, dy: number, r
   return { t: tMin, axis };
 }
 
+/** How far outside a wall corner a path turns, so it never grazes the wall it goes around. */
+const CORNER_GAP = 0.5;
+
+/**
+ * Length of the shortest path from (x0, y0) to (x1, y1) that goes around walls, turning only at
+ * wall corners, or Infinity if every such path is longer than `maxLength`. Straight distance
+ * when nothing is in the way. Deterministic: a small Dijkstra over the corners in wall order.
+ */
+export function pathAroundWalls(x0: number, y0: number, x1: number, y1: number, walls: readonly Rect[], maxLength: number): number {
+  const direct = Math.sqrt((x1 - x0) * (x1 - x0) + (y1 - y0) * (y1 - y0));
+  if (direct > maxLength) return Infinity;
+  if (lineOfSight(x0, y0, x1, y1, walls)) return direct;
+
+  const dist = (ax: number, ay: number, bx: number, by: number) => Math.sqrt((bx - ax) * (bx - ax) + (by - ay) * (by - ay));
+  // Corners that could lie on a short enough path (and aren't buried in another wall).
+  const nodes: { x: number; y: number }[] = [];
+  for (const w of walls) {
+    for (const [cx, cy] of [
+      [w.x - CORNER_GAP, w.y - CORNER_GAP], [w.x + w.w + CORNER_GAP, w.y - CORNER_GAP],
+      [w.x - CORNER_GAP, w.y + w.h + CORNER_GAP], [w.x + w.w + CORNER_GAP, w.y + w.h + CORNER_GAP],
+    ]) {
+      if (dist(x0, y0, cx, cy) + dist(cx, cy, x1, y1) > maxLength) continue;
+      if (walls.some((o) => cx > o.x && cx < o.x + o.w && cy > o.y && cy < o.y + o.h)) continue;
+      nodes.push({ x: cx, y: cy });
+    }
+  }
+  // Dijkstra from the start over the corners; the goal is reached from any corner that sees it.
+  const best = nodes.map((n) => (lineOfSight(x0, y0, n.x, n.y, walls) ? dist(x0, y0, n.x, n.y) : Infinity));
+  const done = nodes.map(() => false);
+  let result = Infinity;
+  for (;;) {
+    let i = -1;
+    for (let k = 0; k < nodes.length; k++) if (!done[k] && best[k] < Infinity && (i < 0 || best[k] < best[i])) i = k;
+    if (i < 0 || best[i] >= result) break;
+    done[i] = true;
+    const n = nodes[i];
+    if (lineOfSight(n.x, n.y, x1, y1, walls)) result = Math.min(result, best[i] + dist(n.x, n.y, x1, y1));
+    for (let k = 0; k < nodes.length; k++) {
+      if (done[k]) continue;
+      const via = best[i] + dist(n.x, n.y, nodes[k].x, nodes[k].y);
+      if (via < best[k] && lineOfSight(n.x, n.y, nodes[k].x, nodes[k].y, walls)) best[k] = via;
+    }
+  }
+  return result <= maxLength ? result : Infinity;
+}
+
 /** True if the straight segment between two points does not cross any wall. */
 export function lineOfSight(x0: number, y0: number, x1: number, y1: number, walls: readonly Rect[]): boolean {
   for (const wall of walls) {

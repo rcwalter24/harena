@@ -209,8 +209,11 @@ Consequences:
   as `weapon: 'gas'`, and kills go to the thrower.
 
 ### 5.9 Explosions
-- Walls block explosions: a player takes no damage if a wall is on the straight line
-  from the blast centre to their centre.
+- **Explosions go around wall corners, not through walls.** The distance that counts is the length of
+  the shortest path from the blast centre to your centre that goes around walls (turning at wall
+  corners), minus your radius; damage falls off with it as above. So right behind a corner you still
+  take most of the damage, while behind the middle of a long wall the detour is longer than the radius
+  and you are safe. With nothing in the way, it is simply the straight distance.
 - **Your own explosions hurt you** (×{{explosions.selfDamageFactor}} damage). Dying to your own explosive is a suicide,
   so nobody gets the kill.
 - Damage is rounded to whole points. Several explosions in the same tick all apply.
