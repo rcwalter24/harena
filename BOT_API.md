@@ -2,9 +2,8 @@
 
 <!-- GENERATED FILE: edit docs/BOT_API.template.md or src/engine/config.ts, then run `npm run docs`. -->
 
-> **Status: provisional.** Grenade launcher, mines, bushes, random item spawning and
-> the end-of-match ranking are specified here but still being implemented. Their numbers
-> may still change.
+> **Status: provisional.** Bushes and the end-of-match ranking are specified here but
+> still being implemented. Their numbers may still change.
 
 This document is everything you need to write a bot for **Harena**, a top-down 2D
 arena shooter where every player is a program. Read it fully. The exact numbers are
@@ -122,7 +121,7 @@ Consequences:
 - Max hp is 100 and max shield is 100. **Shield absorbs damage first**, and the
   remainder hits hp.
 - After (re)spawning you are invulnerable for 1.5 s (`invulnerable` > 0). The
-  invulnerability **ends as soon as you attack**. Projectiles still stop on invulnerable
+  invulnerability **ends as soon as you attack or plant a mine**. Projectiles still stop on invulnerable
   players but do no damage.
 
 ### 5.3 Knife (always owned)
@@ -145,7 +144,7 @@ Consequences:
 - A gun item gives the gun (if you lack it) plus its ammo, up to 40. Pad and spawned
   guns carry 15, and dropped guns carry what their owner had.
 
-### 5.5 Grenade launcher (provisional)
+### 5.5 Grenade launcher
 - Picked up as a `launcher` item, which gives 3 grenades (max 6).
 - It fires a grenade from your centre along your facing: speed 360 u/s,
   radius 6, cooldown 1.2 s.
@@ -155,20 +154,23 @@ Consequences:
   20 at the edge. Distance is measured from the blast centre to the nearest point of the target
   (centre distance − 16).
 
-### 5.6 Mines (provisional)
+### 5.6 Mines
 - Picked up as a `mines` item, which gives +2 (carry at most 3).
-- `plantMine: true` plants one at your position, whatever weapon you hold. Cooldown is
-  0.5 s.
+- `plantMine: true` plants one at your position, whatever weapon you hold, even while switching.
+  Cooldown is 0.5 s.
 - A mine explodes **2.5 s after being planted**, no matter who is nearby. Everyone can see mines
   and their remaining `fuse`. Radius is 100 u, damage 90 at the centre falling to 25 at the edge.
 - An explosion **immediately detonates every other mine in its radius** (chain reaction).
 - Mines don't block movement. They outlive their owner, and kills still go to the owner.
 
-### 5.7 Explosions (provisional)
+### 5.7 Explosions
 - Walls block explosions: a player takes no damage if a wall is on the straight line
   from the blast centre to their centre.
 - **Your own explosions hurt you** (×1 damage). Dying to your own explosive is a suicide,
   so nobody gets the kill.
+- Damage is rounded to whole points. Several explosions in the same tick all apply.
+- In `state.events`, explosion damage shows up as `weapon: 'explosion'`. `state.explosions` lists
+  every blast from the previous tick.
 
 ### 5.8 Weapon switching
 - Return `weapon: 'knife' | 'gun' | 'launcher'` to switch; you must own the weapon. The new weapon's
@@ -199,7 +201,7 @@ Items are circles of radius 12. You pick one up when your centre is within
 | `mines` | +2 mines | mines < 3 |
 
 Random items appear every 6 s, starting 3 s into the match, at random free spots. Spawning
-pauses while 6 spawned items are on the map. Spawn weights: ammo 30, shield 25, health 25, gun 12, life 8.
+pauses while 6 spawned items are on the map. Spawn weights: ammo 30, shield 25, health 25, gun 12, life 8, launcher 6, mines 10.
 
 ### 5.11 Bushes (provisional)
 - Bushes are rectangles in `info.map.bushes`. They block nothing: players, bullets, grenades and
@@ -614,6 +616,8 @@ Every value below is also available at runtime as `info.rules.<path>`, for examp
 | `items.weights.health` | 25 | weight | Relative spawn weight of health items. |
 | `items.weights.gun` | 12 | weight | Relative spawn weight of gun items. |
 | `items.weights.life` | 8 | weight | Relative spawn weight of extra-life items. |
+| `items.weights.launcher` | 6 | weight | Relative spawn weight of grenade launcher items. |
+| `items.weights.mines` | 10 | weight | Relative spawn weight of mines items. |
 
 **match**
 
@@ -693,8 +697,9 @@ This bot picks up a gun, keeps its distance, strafes, leads its shots, dodges bu
 knifes anyone who gets too close while it is unarmed.
 
 ```js
-// Gunner: grabs a gun, keeps its distance, leads its shots and dodges bullets.
-// Falls back to the knife when it has no ammo and an enemy gets close.
+// Gunner: grabs weapons, keeps its distance, leads its shots and dodges projectiles.
+// Uses the gun first, the grenade launcher when out of bullets, drops mines on chasers,
+// and falls back to the knife when unarmed and an enemy gets close.
 export const meta = { name: 'Gunner', author: 'Harena examples' };
 
 let rules = null;
@@ -718,7 +723,12 @@ function angleDiff(a, b) {
   return d;
 }
 
-// Does the segment (x0,y0)→(x1,y1) cross the rectangle? (slab test)
+function normalize(v) {
+  const len = Math.hypot(v.x, v.y);
+  return len > 1e-9 ? { x: v.x / len, y: v.y / len } : { x: 0, y: 0 };
+}
+
+// Does the segment (x0,y0)→(x1,y1) cross the rectangle grown by `pad`? (slab test)
 function segmentHitsRect(x0, y0, x1, y1, r, pad) {
   let tMin = 0;
   let tMax = 1;
@@ -745,6 +755,52 @@ function clearShot(a, b, pad) {
   return !walls.some((w) => segmentHitsRect(a.x, a.y, b.x, b.y, w, pad));
 }
 
+// ---------- threat avoidance ----------
+
+// Sideways push away from bullets and grenades that will pass close to us within ~1 s.
+function dodgeVector(state, me) {
+  let dx = 0;
+  let dy = 0;
+  const projectiles = [
+    ...state.bullets.map((b) => ({ ...b, danger: rules.player.radius + b.radius + 12 })),
+    // Grenades explode on contact, so give them a much wider berth.
+    ...state.grenades.map((g) => ({ ...g, danger: rules.launcher.blastRadius + rules.player.radius })),
+  ];
+  for (const b of projectiles) {
+    if (b.ownerId === me.id) continue;
+    const speed = Math.hypot(b.vx, b.vy) || 1;
+    const ux = b.vx / speed;
+    const uy = b.vy / speed;
+    const rx = me.x - b.x;
+    const ry = me.y - b.y;
+    const along = rx * ux + ry * uy; // distance ahead of the projectile
+    if (along < 0 || along > speed) continue;
+    const side = rx * -uy + ry * ux; // signed perpendicular offset
+    if (Math.abs(side) > b.danger) continue;
+    const s = side >= 0 ? 1 : -1;
+    const weight = 1 - along / speed;
+    dx += -uy * s * weight;
+    dy += ux * s * weight;
+  }
+  return { x: dx, y: dy };
+}
+
+// Push away from mines that will explode soon and would reach us (including our own).
+function mineEscape(state, me) {
+  let dx = 0;
+  let dy = 0;
+  const reach = rules.mines.blastRadius + rules.player.radius + 20;
+  for (const m of state.mines) {
+    const d = dist(m, me);
+    if (d > reach || m.fuse > 1.5) continue;
+    const away = d > 1e-6 ? { x: (me.x - m.x) / d, y: (me.y - m.y) / d } : { x: 1, y: 0 };
+    const urgency = 1 + (1.5 - m.fuse);
+    dx += away.x * urgency;
+    dy += away.y * urgency;
+  }
+  return { x: dx, y: dy };
+}
+
 // ---------- decision ----------
 
 function nearestEnemy(state, me) {
@@ -761,33 +817,17 @@ function nearestEnemy(state, me) {
   return best;
 }
 
-// Sum of sideways pushes away from bullets that will pass close to us within ~1 s.
-function dodgeVector(state, me) {
-  let dx = 0;
-  let dy = 0;
-  const danger = rules.player.radius + rules.gun.bulletRadius + 12;
-  for (const b of state.bullets) {
-    if (b.ownerId === me.id) continue;
-    const speed = Math.hypot(b.vx, b.vy) || 1;
-    const ux = b.vx / speed;
-    const uy = b.vy / speed;
-    const rx = me.x - b.x;
-    const ry = me.y - b.y;
-    const along = rx * ux + ry * uy; // distance ahead of the bullet
-    if (along < 0 || along > speed * 1.0) continue;
-    const side = rx * -uy + ry * ux; // signed perpendicular offset
-    if (Math.abs(side) > danger) continue;
-    const s = side >= 0 ? 1 : -1;
-    const weight = 1 - along / (speed * 1.0);
-    dx += -uy * s * weight;
-    dy += ux * s * weight;
-  }
-  return { x: dx, y: dy };
-}
-
-function normalize(v) {
-  const len = Math.hypot(v.x, v.y);
-  return len > 1e-9 ? { x: v.x / len, y: v.y / len } : { x: 0, y: 0 };
+// Items worth walking to right now, nearest first.
+function wantedItems(state, me) {
+  const useful = (it) =>
+    (it.type === 'gun' && (!me.hasGun || me.ammo.gun < rules.gun.maxAmmo)) ||
+    (it.type === 'ammo' && me.hasGun && me.ammo.gun < rules.gun.maxAmmo) ||
+    (it.type === 'launcher' && (!me.hasLauncher || me.ammo.launcher < rules.launcher.maxAmmo)) ||
+    (it.type === 'mines' && me.mines < rules.mines.maxCarry) ||
+    (it.type === 'health' && me.hp < rules.player.maxHp * 0.7) ||
+    (it.type === 'shield' && me.shield < rules.player.maxShield) ||
+    (it.type === 'life' && me.lives < rules.player.maxLives);
+  return state.items.filter(useful).sort((a, b) => dist(a, me) - dist(b, me));
 }
 
 export function decide(state) {
@@ -795,19 +835,21 @@ export function decide(state) {
   if (!me.alive) return null;
   const enemy = nearestEnemy(state, me);
   const dodge = dodgeVector(state, me);
+  const escape = mineEscape(state, me);
+  const avoid = { x: dodge.x * 2 + escape.x * 3, y: dodge.y * 2 + escape.y * 3 };
+  const items = wantedItems(state, me);
 
-  // 1) No usable gun: go for the nearest gun (or ammo), knife anyone who gets close.
-  const armed = me.hasGun && me.ammo.gun > 0;
-  if (!armed) {
-    const wanted = state.items
-      .filter((it) => it.type === 'gun' || (me.hasGun && it.type === 'ammo'))
-      .sort((a, b) => dist(a, me) - dist(b, me))[0];
+  const weapon = me.hasGun && me.ammo.gun > 0 ? 'gun' : me.hasLauncher && me.ammo.launcher > 0 ? 'launcher' : 'knife';
+
+  // 1) Unarmed: go for items, knife anyone who gets close.
+  if (weapon === 'knife') {
     const reach = 2 * rules.player.radius + rules.knife.reach;
+    const wanted = items[0];
     if (enemy && (!wanted || dist(enemy, me) < reach + 30)) {
       const angle = Math.atan2(enemy.y - me.y, enemy.x - me.x);
       const toward = normalize({ x: enemy.x - me.x, y: enemy.y - me.y });
       return {
-        move: normalize({ x: toward.x + dodge.x, y: toward.y + dodge.y }),
+        move: normalize({ x: toward.x + avoid.x, y: toward.y + avoid.y }),
         aim: angle,
         attack: dist(enemy, me) <= reach && Math.abs(angleDiff(angle, me.facing)) < 0.6,
         weapon: 'knife',
@@ -815,18 +857,18 @@ export function decide(state) {
     }
     if (wanted) {
       const toward = normalize({ x: wanted.x - me.x, y: wanted.y - me.y });
-      return {
-        move: normalize({ x: toward.x + dodge.x * 1.5, y: toward.y + dodge.y * 1.5 }),
-        aim: Math.atan2(toward.y, toward.x),
-        weapon: 'knife',
-      };
+      return { move: normalize({ x: toward.x + avoid.x, y: toward.y + avoid.y }), aim: Math.atan2(toward.y, toward.x), weapon: 'knife' };
     }
-    return { move: normalize(dodge), weapon: 'knife' };
+    return { move: normalize(avoid), weapon: 'knife' };
   }
 
-  if (!enemy) return { move: normalize(dodge), weapon: 'gun' };
+  if (!enemy) {
+    const wanted = items[0];
+    const toward = wanted ? normalize({ x: wanted.x - me.x, y: wanted.y - me.y }) : { x: 0, y: 0 };
+    return { move: normalize({ x: toward.x + avoid.x, y: toward.y + avoid.y }), weapon };
+  }
 
-  // 2) Armed: keep ~320 u away, strafe sideways, and lead the target.
+  // 2) Armed: keep ~320 u away, strafe sideways, grab nearby items, and lead the target.
   const d = dist(enemy, me);
   const toward = normalize({ x: enemy.x - me.x, y: enemy.y - me.y });
   const radial = d > 380 ? 1 : d < 260 ? -1 : 0;
@@ -834,22 +876,38 @@ export function decide(state) {
     strafeSign = Math.random() < 0.5 ? -1 : 1;
     strafeFlipAt = state.time + 0.8 + Math.random();
   }
-  const strafe = { x: -toward.y * strafeSign, y: toward.x * strafeSign };
   // Bumped into something? Flip the strafe direction.
   if (Math.hypot(me.vx, me.vy) < 40 && state.time > 0.3) strafeSign = -strafeSign;
+  const strafe = { x: -toward.y * strafeSign, y: toward.x * strafeSign };
+  const nearbyItem = items.find((it) => dist(it, me) < 150);
+  const detour = nearbyItem ? normalize({ x: nearbyItem.x - me.x, y: nearbyItem.y - me.y }) : { x: 0, y: 0 };
 
   const move = normalize({
-    x: toward.x * radial + strafe.x * 0.7 + dodge.x * 2,
-    y: toward.y * radial + strafe.y * 0.7 + dodge.y * 2,
+    x: toward.x * radial + strafe.x * 0.7 + detour.x + avoid.x,
+    y: toward.y * radial + strafe.y * 0.7 + detour.y + avoid.y,
   });
 
-  // Aim where the enemy will be when the bullet arrives.
-  const flight = d / rules.gun.bulletSpeed;
+  // Aim where the enemy will be when the projectile arrives.
+  const speed = weapon === 'gun' ? rules.gun.bulletSpeed : rules.launcher.grenadeSpeed;
+  const flight = d / speed;
   const lead = { x: enemy.x + enemy.vx * flight, y: enemy.y + enemy.vy * flight };
   const aim = Math.atan2(lead.y - me.y, lead.x - me.x);
   const onTarget = Math.abs(angleDiff(aim, me.facing)) < 0.08;
-  const attack = me.weapon === 'gun' && onTarget && d < rules.gun.range * 0.8 && clearShot(me, lead, rules.gun.bulletRadius);
 
-  return { move, aim, attack, weapon: 'gun' };
+  let attack = false;
+  if (me.weapon === weapon && onTarget) {
+    if (weapon === 'gun') {
+      attack = d < rules.gun.range * 0.8 && clearShot(me, lead, rules.gun.bulletRadius);
+    } else {
+      // Never fire a grenade close enough to catch ourselves in the blast.
+      const safe = rules.launcher.blastRadius + rules.player.radius + 40;
+      attack = d > safe && d < rules.launcher.range && clearShot(me, lead, rules.launcher.grenadeRadius);
+    }
+  }
+
+  // An enemy is chasing us down: leave a mine behind (mineEscape then walks us away from it).
+  const plantMine = me.mines > 0 && d < 120 && me.cooldowns.mine === 0 && !state.mines.some((m) => dist(m, me) < 150);
+
+  return { move, aim, attack, weapon, plantMine };
 }
 ```

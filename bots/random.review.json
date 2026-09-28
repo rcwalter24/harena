@@ -2,7 +2,7 @@
   "version": 1,
   "file": "random.js",
   "sourceHash": "1546693ee93cb4",
-  "reviewedAt": "2026-09-27T23:51:53.576Z",
+  "reviewedAt": "2026-09-27T23:53:57.980Z",
   "static": {
     "ok": true,
     "findings": []
@@ -11,20 +11,20 @@
     "model": "jev-1.13.0",
     "risks": {
       "outsideAccess": 0.03,
-      "globalTampering": 0.05,
+      "globalTampering": 0.04,
       "backgroundWork": 0.03,
       "obfuscation": 0.04,
-      "actionExploit": 0.04,
+      "actionExploit": 0.03,
       "reviewerInjection": 0.04
     },
     "conformance": {
       "choice": "follows",
-      "confidence": 0.82,
-      "follows": 0.88
+      "confidence": 0.86,
+      "follows": 0.91
     },
     "quality": {
-      "score": 1.02,
-      "confidence": 0.87,
+      "score": 1,
+      "confidence": 0.89,
       "max": 3
     },
     "inputTokens": 1111

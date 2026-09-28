@@ -1,8 +1,8 @@
 {
   "version": 1,
   "file": "gunner.js",
-  "sourceHash": "06fa9814de652d",
-  "reviewedAt": "2026-09-27T23:51:53.203Z",
+  "sourceHash": "022ca716b40cbf",
+  "reviewedAt": "2026-09-28T00:04:04.710Z",
   "static": {
     "ok": true,
     "findings": []
@@ -10,24 +10,24 @@
   "jev": {
     "model": "jev-1.13.0",
     "risks": {
-      "outsideAccess": 0.02,
+      "outsideAccess": 0.03,
       "globalTampering": 0.05,
       "backgroundWork": 0.03,
       "obfuscation": 0.04,
       "actionExploit": 0.03,
-      "reviewerInjection": 0.04
+      "reviewerInjection": 0.03
     },
     "conformance": {
       "choice": "follows",
-      "confidence": 0.62,
-      "follows": 0.75
+      "confidence": 0.82,
+      "follows": 0.88
     },
     "quality": {
-      "score": 2.94,
-      "confidence": 0.94,
+      "score": 2.96,
+      "confidence": 0.96,
       "max": 3
     },
-    "inputTokens": 2432
+    "inputTokens": 3180
   },
   "verdict": "pass",
   "reasons": []

@@ -193,6 +193,11 @@ button:hover { border-color: var(--accent); }
   text-shadow: 0 0 2px #000;
 }
 
+.card-weapons {
+  color: var(--muted);
+  margin-top: 4px;
+}
+.card-weapons b { color: var(--text); font-weight: 600; }
 .card-foot {
   display: flex;
   justify-content: space-between;

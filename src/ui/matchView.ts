@@ -67,9 +67,9 @@ export function mountMatch(app: HTMLElement, setup: MatchSetup, onExit: () => vo
           <div class="log-list" id="log-list"></div>
         </div>
         <div class="help">
-          ${hasHuman ? '<b>WASD</b> move · <b>mouse</b> aim · <b>click/Space</b> attack · <b>1/2</b> weapon · <b>Q</b> toggle<br />' : ''}
+          ${hasHuman ? '<b>WASD</b> move · <b>mouse</b> aim · <b>click/Space</b> attack<br /><b>1/2/3</b> knife/gun/launcher · <b>Q</b> next weapon · <b>E/right click</b> mine<br />' : ''}
           <b>P</b> pause · <b>N</b> step · <b>[ ]</b> speed · <b>R</b> restart · <b>F3</b> debug
-          ${setup.debug ? '<br />Cheats: <b>G</b> gun + ammo · <b>H</b> heal + shield' : ''}
+          ${setup.debug ? '<br />Cheats: <b>G</b> all weapons + ammo + mines · <b>H</b> heal + shield' : ''}
         </div>
       </aside>
     </div>`;
@@ -210,10 +210,13 @@ export function mountMatch(app: HTMLElement, setup: MatchSetup, onExit: () => vo
     if (!setup.debug || humanId < 0 || !loop) return;
     const me = loop.runner.state.players[humanId];
     if (!me.alive) return;
-    const { player, gun } = loop.runner.state.config;
+    const { player, gun, launcher, mines } = loop.runner.state.config;
     if (kind === 'gun') {
       me.hasGun = true;
       me.ammo = gun.maxAmmo;
+      me.hasLauncher = true;
+      me.grenades = launcher.maxAmmo;
+      me.mines = mines.maxCarry;
     } else {
       me.hp = player.maxHp;
       me.shield = player.maxShield;

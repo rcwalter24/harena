@@ -37,7 +37,12 @@ export class PlayerCards {
         : !p.alive
           ? `respawn in ${(p.respawnTimer / state.config.tickRate).toFixed(1)}s`
           : p.invulnerableTimer > 0 ? 'invulnerable' : '';
-      const weapon = p.weapon === 'gun' ? `gun · ${p.ammo}` : p.hasGun ? `knife (gun · ${p.ammo})` : 'knife';
+      const owned = [
+        p.hasGun ? `${p.weapon === 'gun' ? '<b>gun</b>' : 'gun'} ${p.ammo}` : '',
+        p.hasLauncher ? `${p.weapon === 'launcher' ? '<b>launcher</b>' : 'launcher'} ${p.grenades}` : '',
+        p.mines > 0 ? `mines ${p.mines}` : '',
+      ].filter(Boolean);
+      const weapon = [p.weapon === 'knife' ? '<b>knife</b>' : 'knife', ...owned].join(' · ');
       card.innerHTML = `
         <div class="card-head">
           <span class="dot" style="background:${playerColor(p.id)}"></span>
@@ -46,8 +51,9 @@ export class PlayerCards {
         </div>
         <div class="bar hp"><div style="width:${(100 * p.hp) / player.maxHp}%"></div><span>${Math.ceil(p.hp)}</span></div>
         <div class="bar shield"><div style="width:${(100 * p.shield) / player.maxShield}%"></div><span>${Math.ceil(p.shield)}</span></div>
-        <div class="card-foot"><span>${weapon}</span><span>K ${p.stats.kills} · D ${p.stats.deaths}</span></div>
-        <div class="status">${status}</div>`;
+        <div class="card-weapons">${weapon}</div>
+        <div class="card-foot"><span class="status">${status}</span><span>K ${p.stats.kills} · D ${p.stats.deaths}</span></div>
+`;
       card.querySelector('.name')!.textContent = p.name;
     }
   }
@@ -76,9 +82,11 @@ export class KillFeed {
       };
       if (e.type === 'death') {
         if (e.killerId >= 0) {
-          row.append(name(e.killerId), el('span', 'how', e.weapon === 'gun' ? ' ⁍ ' : ' 🗡 '), name(e.playerId));
+          const icon = e.weapon === 'gun' ? ' ⁍ ' : e.weapon === 'knife' ? ' 🗡 ' : ' 💥 ';
+          row.append(name(e.killerId), el('span', 'how', icon), name(e.playerId));
         } else {
-          row.append(name(e.playerId), el('span', 'how', ' died'));
+          const how = e.weapon === 'launcher' || e.weapon === 'mine' ? ' blew themselves up' : ' died';
+          row.append(name(e.playerId), el('span', 'how', how));
         }
       } else {
         row.append(name(e.playerId), el('span', 'how', ' is eliminated'));

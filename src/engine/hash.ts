@@ -32,6 +32,12 @@ export function hashState(state: GameState): string {
   for (const b of state.bullets) {
     mix(b.id); mix(b.x); mix(b.y); mix(b.vx); mix(b.vy);
   }
+  for (const g of state.grenades) {
+    mix(g.id); mix(g.x); mix(g.y); mix(g.traveled);
+  }
+  for (const m of state.mines) {
+    mix(m.id); mix(m.x); mix(m.y); mix(m.fuseTimer);
+  }
   for (const it of state.items) {
     mix(it.id); mix(it.x); mix(it.y); mix(it.ammo);
   }

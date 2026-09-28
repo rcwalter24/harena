@@ -2,9 +2,8 @@
 
 {{GENERATED_NOTICE}}
 
-> **Status: provisional.** Grenade launcher, mines, bushes, random item spawning and
-> the end-of-match ranking are specified here but still being implemented. Their numbers
-> may still change.
+> **Status: provisional.** Bushes and the end-of-match ranking are specified here but
+> still being implemented. Their numbers may still change.
 
 This document is everything you need to write a bot for **Harena**, a top-down 2D
 arena shooter where every player is a program. Read it fully. The exact numbers are
@@ -122,7 +121,7 @@ Consequences:
 - Max hp is {{player.maxHp}} and max shield is {{player.maxShield}}. **Shield absorbs damage first**, and the
   remainder hits hp.
 - After (re)spawning you are invulnerable for {{respawn.invulnerability}} s (`invulnerable` > 0). The
-  invulnerability **ends as soon as you attack**. Projectiles still stop on invulnerable
+  invulnerability **ends as soon as you attack or plant a mine**. Projectiles still stop on invulnerable
   players but do no damage.
 
 ### 5.3 Knife (always owned)
@@ -145,7 +144,7 @@ Consequences:
 - A gun item gives the gun (if you lack it) plus its ammo, up to {{gun.maxAmmo}}. Pad and spawned
   guns carry {{gun.pickupAmmo}}, and dropped guns carry what their owner had.
 
-### 5.5 Grenade launcher (provisional)
+### 5.5 Grenade launcher
 - Picked up as a `launcher` item, which gives {{launcher.pickupAmmo}} grenades (max {{launcher.maxAmmo}}).
 - It fires a grenade from your centre along your facing: speed {{launcher.grenadeSpeed}} u/s,
   radius {{launcher.grenadeRadius}}, cooldown {{launcher.cooldown}} s.
@@ -155,20 +154,23 @@ Consequences:
   {{launcher.edgeDamage}} at the edge. Distance is measured from the blast centre to the nearest point of the target
   (centre distance − {{player.radius}}).
 
-### 5.6 Mines (provisional)
+### 5.6 Mines
 - Picked up as a `mines` item, which gives +{{mines.pickupAmount}} (carry at most {{mines.maxCarry}}).
-- `plantMine: true` plants one at your position, whatever weapon you hold. Cooldown is
-  {{mines.plantCooldown}} s.
+- `plantMine: true` plants one at your position, whatever weapon you hold, even while switching.
+  Cooldown is {{mines.plantCooldown}} s.
 - A mine explodes **{{mines.fuse}} s after being planted**, no matter who is nearby. Everyone can see mines
   and their remaining `fuse`. Radius is {{mines.blastRadius}} u, damage {{mines.centerDamage}} at the centre falling to {{mines.edgeDamage}} at the edge.
 - An explosion **immediately detonates every other mine in its radius** (chain reaction).
 - Mines don't block movement. They outlive their owner, and kills still go to the owner.
 
-### 5.7 Explosions (provisional)
+### 5.7 Explosions
 - Walls block explosions: a player takes no damage if a wall is on the straight line
   from the blast centre to their centre.
 - **Your own explosions hurt you** (×{{explosions.selfDamageFactor}} damage). Dying to your own explosive is a suicide,
   so nobody gets the kill.
+- Damage is rounded to whole points. Several explosions in the same tick all apply.
+- In `state.events`, explosion damage shows up as `weapon: 'explosion'`. `state.explosions` lists
+  every blast from the previous tick.
 
 ### 5.8 Weapon switching
 - Return `weapon: 'knife' | 'gun' | 'launcher'` to switch; you must own the weapon. The new weapon's

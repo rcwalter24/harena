@@ -2,7 +2,7 @@
   "version": 1,
   "file": "chaser.js",
   "sourceHash": "171a1df563ebe8",
-  "reviewedAt": "2026-09-27T23:51:52.005Z",
+  "reviewedAt": "2026-09-27T23:53:55.944Z",
   "static": {
     "ok": true,
     "findings": []
@@ -13,18 +13,18 @@
       "outsideAccess": 0.03,
       "globalTampering": 0.04,
       "backgroundWork": 0.03,
-      "obfuscation": 0.05,
-      "actionExploit": 0.03,
+      "obfuscation": 0.04,
+      "actionExploit": 0.04,
       "reviewerInjection": 0.03
     },
     "conformance": {
       "choice": "follows",
-      "confidence": 0.73,
-      "follows": 0.83
+      "confidence": 0.77,
+      "follows": 0.85
     },
     "quality": {
-      "score": 1.75,
-      "confidence": 0.75,
+      "score": 1.77,
+      "confidence": 0.77,
       "max": 3
     },
     "inputTokens": 1277

@@ -1,7 +1,8 @@
 import { DEFAULT_CONFIG, ITEM_TYPES, secondsToTicks, type GameConfig, type ItemType } from './config.ts';
 import { deriveRng } from './rng.ts';
 import { applyAttacks, updateBullets } from './systems/combat.ts';
-import { handlePickups, refillGunPads } from './systems/items.ts';
+import { dueMines, plantMines, resolveExplosions, updateGrenades } from './systems/explosives.ts';
+import { handlePickups, refillGunPads, updateItemSpawner } from './systems/items.ts';
 import { handleDeaths, handleRespawns, placeAtSpawn } from './systems/lives.ts';
 import { applyMovement, applyTurning, applyWeaponSwitches } from './systems/movement.ts';
 import { IDLE_ACTION, type ActionInput, type GameEvent, type GameState, type MapData, type PlayerSetup, type PlayerState } from './types.ts';
@@ -20,7 +21,7 @@ function emptyStats(): PlayerState['stats'] {
   for (const t of ITEM_TYPES) itemsByType[t] = 0;
   return {
     kills: 0, deaths: 0, damageDealt: 0, damageTaken: 0, shotsFired: 0, shotsHit: 0,
-    knifeSwings: 0, knifeHits: 0, itemsPicked: 0, itemsByType,
+    knifeSwings: 0, knifeHits: 0, grenadesFired: 0, grenadeHits: 0, minesPlanted: 0, itemsPicked: 0, itemsByType,
   };
 }
 
@@ -41,6 +42,9 @@ export function createGame(opts: GameOptions): GameState {
     timeLimitTicks: secondsToTicks(opts.timeLimit ?? config.match.defaultTimeLimit, config),
     players: [],
     bullets: [],
+    grenades: [],
+    mines: [],
+    explosions: [],
     items: [],
     gunPads: map.gunSpawns.map((g) => ({ x: g.x, y: g.y, itemId: -1, refillTimer: 0 })),
     nextEntityId: 1,
@@ -110,6 +114,8 @@ function tickTimers(state: GameState): void {
   for (const pad of state.gunPads) {
     if (pad.itemId < 0) pad.refillTimer = dec(pad.refillTimer);
   }
+  for (const mine of state.mines) mine.fuseTimer = dec(mine.fuseTimer);
+  state.itemSpawnTimer = dec(state.itemSpawnTimer);
 }
 
 /**
@@ -117,23 +123,30 @@ function tickTimers(state: GameState): void {
  * input (missing entries count as idle). Mutates `state` and returns the events
  * produced during this tick (also stored in state.events).
  *
- * Order: weapon switches → turning → movement & collisions → attacks → bullets →
- * deaths → pickups → respawns & gun pads → timers → match end.
+ * Order: weapon switches → turning → movement & collisions → attacks & mine
+ * planting → bullets → grenades → due mines → explosions (with chain reactions) →
+ * deaths → pickups → respawns, gun pads & item spawns → timers → match end.
  */
 export function step(state: GameState, actions: readonly (ActionInput | undefined)[]): GameEvent[] {
   if (state.over) return [];
   state.events = [];
+  state.explosions = [];
   const acts = state.players.map((p) => actions[p.id] ?? IDLE_ACTION);
 
   applyWeaponSwitches(state, acts);
   applyTurning(state, acts);
   applyMovement(state, acts);
   applyAttacks(state, acts);
+  plantMines(state, acts);
   updateBullets(state);
+  const blasts = updateGrenades(state);
+  blasts.push(...dueMines(state));
+  resolveExplosions(state, blasts);
   handleDeaths(state);
   handlePickups(state);
   handleRespawns(state);
   refillGunPads(state);
+  updateItemSpawner(state);
   tickTimers(state);
 
   state.tick++;

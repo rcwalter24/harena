@@ -42,7 +42,11 @@ function eventViews(state: GameState): EventView[] {
     switch (e.type) {
       case 'shot': out.push({ type: 'shot', playerId: e.playerId }); break;
       case 'swing': out.push({ type: 'swing', playerId: e.playerId, hitIds: [...e.hitIds] }); break;
-      case 'hit': out.push({ type: 'hit', attackerId: e.attackerId, targetId: e.targetId, weapon: e.weapon, damage: e.damage }); break;
+      case 'hit': {
+        const weapon = e.weapon === 'knife' || e.weapon === 'gun' ? e.weapon : 'explosion';
+        out.push({ type: 'hit', attackerId: e.attackerId, targetId: e.targetId, weapon, damage: e.damage });
+        break;
+      }
       case 'death': out.push({ type: 'death', playerId: e.playerId, killerId: e.killerId, livesLeft: e.livesLeft }); break;
       case 'eliminated': out.push({ type: 'eliminated', playerId: e.playerId }); break;
       case 'respawn': out.push({ type: 'respawn', playerId: e.playerId, x: e.x, y: e.y }); break;
@@ -67,9 +71,12 @@ export function buildBotState(state: GameState): Omit<BotState, 'self'> {
     bullets: state.bullets.map((b) => ({
       id: b.id, ownerId: b.ownerId, x: b.x, y: b.y, vx: b.vx, vy: b.vy, radius: config.gun.bulletRadius,
     })),
-    grenades: [],
-    mines: [],
-    explosions: [],
+    grenades: state.grenades.map((g) => ({
+      id: g.id, ownerId: g.ownerId, x: g.x, y: g.y, vx: g.vx, vy: g.vy,
+      radius: config.launcher.grenadeRadius, remainingRange: Math.max(0, config.launcher.range - g.traveled),
+    })),
+    mines: state.mines.map((m) => ({ id: m.id, ownerId: m.ownerId, x: m.x, y: m.y, fuse: m.fuseTimer / config.tickRate })),
+    explosions: state.explosions.map((e) => ({ ownerId: e.ownerId, source: e.source, x: e.x, y: e.y, radius: e.radius })),
     items: state.items.map((it) => ({ id: it.id, type: it.type, x: it.x, y: it.y })),
     events: eventViews(state),
   };

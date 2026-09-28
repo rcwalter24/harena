@@ -44,7 +44,8 @@ export function applyMovement(state: GameState, actions: readonly ActionInput[])
       mx /= len;
       my /= len;
     }
-    const speed = p.weapon === 'gun' ? config.player.speedGun : config.player.speedKnife;
+    const speed = p.weapon === 'gun' ? config.player.speedGun
+      : p.weapon === 'launcher' ? config.player.speedLauncher : config.player.speedKnife;
     const pos = { x: p.x + mx * speed * dt, y: p.y + my * speed * dt };
     resolveCircleWalls(pos, r, map.walls, map.width, map.height);
     p.x = pos.x;

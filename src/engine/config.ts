@@ -6,9 +6,9 @@
  * angles in degrees where noted (the engine converts to radians / ticks).
  */
 
-export type ItemType = 'ammo' | 'shield' | 'health' | 'gun' | 'life';
+export type ItemType = 'ammo' | 'shield' | 'health' | 'gun' | 'life' | 'launcher' | 'mines';
 
-export const ITEM_TYPES: readonly ItemType[] = ['ammo', 'shield', 'health', 'gun', 'life'];
+export const ITEM_TYPES: readonly ItemType[] = ['ammo', 'shield', 'health', 'gun', 'life', 'launcher', 'mines'];
 
 export interface GameConfig {
   tickRate: number;
@@ -170,7 +170,7 @@ export const DEFAULT_CONFIG: GameConfig = {
     shieldAmount: 50,
     healthAmount: 40,
     lifeAmount: 1,
-    weights: { ammo: 30, shield: 25, health: 25, gun: 12, life: 8 },
+    weights: { ammo: 30, shield: 25, health: 25, gun: 12, life: 8, launcher: 6, mines: 10 },
   },
   match: {
     defaultTimeLimit: 180,
@@ -252,6 +252,8 @@ export const CONFIG_DOCS: Record<string, ConfigDoc> = {
   'items.weights.health': { unit: 'weight', description: 'Relative spawn weight of health items.' },
   'items.weights.gun': { unit: 'weight', description: 'Relative spawn weight of gun items.' },
   'items.weights.life': { unit: 'weight', description: 'Relative spawn weight of extra-life items.' },
+  'items.weights.launcher': { unit: 'weight', description: 'Relative spawn weight of grenade launcher items.' },
+  'items.weights.mines': { unit: 'weight', description: 'Relative spawn weight of mines items.' },
   'match.defaultTimeLimit': { unit: 's', description: 'Default match length (the match setup may change it).' },
   'match.minPlayers': { unit: 'players', description: 'Minimum players in a match.' },
   'match.maxPlayers': { unit: 'players', description: 'Maximum players in a match.' },

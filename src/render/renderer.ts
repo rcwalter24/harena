@@ -13,23 +13,27 @@ const ITEM_STYLE: Record<ItemType, { fill: string; label: string }> = {
   shield: { fill: '#4a90e2', label: 'S' },
   health: { fill: '#e05555', label: '+' },
   life: { fill: '#e36fb4', label: '♥' },
+  launcher: { fill: '#8fae5a', label: 'L' },
+  mines: { fill: '#c0563f', label: 'M' },
 };
 
 /** Positions from the previous tick, used to interpolate between ticks. */
 export interface FrameCapture {
   players: { x: number; y: number; facing: number; alive: boolean }[];
   bullets: Map<number, { x: number; y: number }>;
+  grenades: Map<number, { x: number; y: number }>;
 }
 
 export function captureFrame(state: GameState): FrameCapture {
   return {
     players: state.players.map((p) => ({ x: p.x, y: p.y, facing: p.facing, alive: p.alive })),
     bullets: new Map(state.bullets.map((b) => [b.id, { x: b.x, y: b.y }])),
+    grenades: new Map(state.grenades.map((g) => [g.id, { x: g.x, y: g.y }])),
   };
 }
 
 interface Effect {
-  kind: 'swing' | 'damage' | 'puff' | 'death';
+  kind: 'swing' | 'damage' | 'puff' | 'death' | 'explosion';
   x: number;
   y: number;
   angle: number;
@@ -99,6 +103,9 @@ export class Renderer {
           this.effects.push({ kind: 'damage', x: t.x, y: t.y - 24, angle: 0, text: String(e.damage), color, born: now, life: 800 });
           break;
         }
+        case 'explosion':
+          this.effects.push({ kind: 'explosion', x: e.x, y: e.y, angle: 0, text: '', color: playerColor(e.ownerId), born: now, life: 450, size: e.radius });
+          break;
         case 'bulletEnd':
           this.effects.push({ kind: 'puff', x: e.x, y: e.y, angle: 0, text: '', color: '#ffe08a', born: now, life: 160 });
           break;
@@ -139,7 +146,9 @@ export class Renderer {
     this.drawArena(state);
     this.drawPads(state);
     this.drawItems(state);
+    this.drawMines(state);
     this.drawBullets(state, prev, alpha);
+    this.drawGrenades(state, prev, alpha);
 
     const positions = state.players.map((p) => {
       const q = prev?.players[p.id];
@@ -261,6 +270,80 @@ export class Renderer {
     }
   }
 
+  private drawGrenades(state: GameState, prev: FrameCapture | null, alpha: number): void {
+    const { ctx } = this;
+    // Drawn a little larger than the hitbox so it reads at small scales.
+    const r = state.config.launcher.grenadeRadius * 1.4;
+    for (const g of state.grenades) {
+      const q = prev?.grenades.get(g.id);
+      const x = q ? lerp(q.x, g.x, alpha) : g.x;
+      const y = q ? lerp(q.y, g.y, alpha) : g.y;
+      const color = playerColor(g.ownerId);
+      const glow = ctx.createRadialGradient(x, y, 0, x, y, r * 3.5);
+      glow.addColorStop(0, `${color}99`);
+      glow.addColorStop(1, `${color}00`);
+      ctx.fillStyle = glow;
+      ctx.beginPath();
+      ctx.arc(x, y, r * 3.5, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = '#4b5a2e';
+      ctx.beginPath();
+      ctx.arc(x, y, r, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.strokeStyle = color;
+      ctx.lineWidth = 2;
+      ctx.stroke();
+      // Fuse spark at the back.
+      const speed = Math.hypot(g.vx, g.vy) || 1;
+      ctx.fillStyle = '#ffd166';
+      ctx.beginPath();
+      ctx.arc(x - (g.vx / speed) * r, y - (g.vy / speed) * r, 2, 0, Math.PI * 2);
+      ctx.fill();
+    }
+  }
+
+  private drawMines(state: GameState): void {
+    const { ctx } = this;
+    const fuseTicks = state.config.mines.fuse * state.config.tickRate;
+    const blast = state.config.mines.blastRadius;
+    const now = performance.now();
+    for (const m of state.mines) {
+      const color = playerColor(m.ownerId);
+      const left = m.fuseTimer / fuseTicks;
+      const secondsLeft = m.fuseTimer / state.config.tickRate;
+      // Danger zone fades in during the last second.
+      if (secondsLeft < 1) {
+        ctx.fillStyle = `rgba(255,77,77,${0.12 * (1 - secondsLeft)})`;
+        ctx.strokeStyle = `rgba(255,77,77,${0.5 * (1 - secondsLeft)})`;
+        ctx.lineWidth = 1.5;
+        ctx.beginPath();
+        ctx.arc(m.x, m.y, blast, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.stroke();
+      }
+      ctx.fillStyle = '#23262e';
+      ctx.beginPath();
+      ctx.arc(m.x, m.y, 11, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.strokeStyle = color;
+      ctx.lineWidth = 3;
+      ctx.stroke();
+      // Countdown ring: shrinks as the fuse burns.
+      ctx.strokeStyle = '#ff4d4d';
+      ctx.lineWidth = 3;
+      ctx.beginPath();
+      ctx.arc(m.x, m.y, 16, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * left);
+      ctx.stroke();
+      // Blinks faster as the fuse runs out.
+      const period = 90 + 450 * left;
+      const on = Math.floor(now / period) % 2 === 0;
+      ctx.fillStyle = on ? '#ff4d4d' : '#6b2a2a';
+      ctx.beginPath();
+      ctx.arc(m.x, m.y, 4.5, 0, Math.PI * 2);
+      ctx.fill();
+    }
+  }
+
   private drawPlayer(state: GameState, p: PlayerState, pos: { x: number; y: number; facing: number }, focus: boolean): void {
     const { ctx } = this;
     const r = state.config.player.radius;
@@ -272,7 +355,13 @@ export class Renderer {
     ctx.save();
     ctx.translate(pos.x, pos.y);
     ctx.rotate(pos.facing);
-    if (p.weapon === 'gun') {
+    if (p.weapon === 'launcher') {
+      ctx.fillStyle = '#4b5a2e';
+      ctx.fillRect(r - 4, -5.5, 20, 11);
+      ctx.strokeStyle = '#8fae5a';
+      ctx.lineWidth = 1;
+      ctx.strokeRect(r - 4, -5.5, 20, 11);
+    } else if (p.weapon === 'gun') {
       ctx.fillStyle = '#2b2f38';
       ctx.fillRect(r - 4, -3.5, 22, 7);
       ctx.strokeStyle = '#8a93a6';
@@ -359,6 +448,25 @@ export class Renderer {
           ctx.arc(e.x, e.y, 3 + t * 8, 0, Math.PI * 2);
           ctx.fill();
           break;
+        case 'explosion': {
+          const radius = e.size ?? 0;
+          ctx.globalAlpha = 0.55 * (1 - t);
+          const fill = ctx.createRadialGradient(e.x, e.y, 0, e.x, e.y, radius);
+          fill.addColorStop(0, '#fff3c4');
+          fill.addColorStop(0.4, '#ffb347');
+          fill.addColorStop(1, 'rgba(255,90,40,0)');
+          ctx.fillStyle = fill;
+          ctx.beginPath();
+          ctx.arc(e.x, e.y, radius * (0.6 + 0.4 * Math.min(1, t * 3)), 0, Math.PI * 2);
+          ctx.fill();
+          ctx.globalAlpha = 1 - t;
+          ctx.strokeStyle = e.color;
+          ctx.lineWidth = 2;
+          ctx.beginPath();
+          ctx.arc(e.x, e.y, radius, 0, Math.PI * 2);
+          ctx.stroke();
+          break;
+        }
         case 'death':
           ctx.strokeStyle = e.color;
           ctx.lineWidth = 3;
@@ -411,6 +519,20 @@ export class Renderer {
       ctx.lineTo(p.x + p.vx * 0.3, p.y + p.vy * 0.3);
       ctx.stroke();
     }
+    ctx.setLineDash([4, 4]);
+    for (const m of state.mines) {
+      ctx.strokeStyle = 'rgba(255,107,107,0.6)';
+      ctx.beginPath();
+      ctx.arc(m.x, m.y, state.config.mines.blastRadius, 0, Math.PI * 2);
+      ctx.stroke();
+    }
+    for (const g of state.grenades) {
+      ctx.strokeStyle = 'rgba(255,179,71,0.6)';
+      ctx.beginPath();
+      ctx.arc(g.x, g.y, state.config.launcher.blastRadius, 0, Math.PI * 2);
+      ctx.stroke();
+    }
+    ctx.setLineDash([]);
     for (const it of state.items) {
       ctx.strokeStyle = 'rgba(255,255,120,0.4)';
       ctx.beginPath();

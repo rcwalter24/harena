@@ -1,11 +1,14 @@
-import { secondsToTicks, type ItemType } from '../config.ts';
+import { ITEM_TYPES, secondsToTicks, type ItemType } from '../config.ts';
+import { circleOverlapsRect } from '../geometry.ts';
 import { length } from '../dmath.ts';
 import type { GameState, Item, PlayerState } from '../types.ts';
 
 /** Would picking up this item do anything for the player? Useless items are left on the ground. */
 export function canUseItem(state: GameState, p: PlayerState, type: ItemType): boolean {
-  const { player, gun } = state.config;
+  const { player, gun, launcher, mines } = state.config;
   switch (type) {
+    case 'launcher': return !p.hasLauncher || p.grenades < launcher.maxAmmo;
+    case 'mines': return p.mines < mines.maxCarry;
     case 'gun': return !p.hasGun || p.ammo < gun.maxAmmo;
     case 'ammo': return p.hasGun && p.ammo < gun.maxAmmo;
     case 'shield': return p.shield < player.maxShield;
@@ -15,8 +18,15 @@ export function canUseItem(state: GameState, p: PlayerState, type: ItemType): bo
 }
 
 function applyItem(state: GameState, p: PlayerState, item: Item): void {
-  const { player, gun, items } = state.config;
+  const { player, gun, items, launcher, mines } = state.config;
   switch (item.type) {
+    case 'launcher':
+      p.hasLauncher = true;
+      p.grenades = Math.min(launcher.maxAmmo, p.grenades + item.ammo);
+      break;
+    case 'mines':
+      p.mines = Math.min(mines.maxCarry, p.mines + item.ammo);
+      break;
     case 'gun':
       p.hasGun = true;
       p.ammo = Math.min(gun.maxAmmo, p.ammo + item.ammo);
@@ -84,4 +94,43 @@ export function refillGunPads(state: GameState): void {
     pad.itemId = id;
     state.events.push({ type: 'itemSpawn', tick: state.tick, itemId: id, itemType: 'gun', x: pad.x, y: pad.y });
   });
+}
+
+/** Ammo (or count) a freshly spawned item of this type carries. */
+export function defaultItemAmmo(state: GameState, type: ItemType): number {
+  const { gun, launcher, mines } = state.config;
+  return type === 'gun' ? gun.pickupAmmo : type === 'launcher' ? launcher.pickupAmmo : type === 'mines' ? mines.pickupAmount : 0;
+}
+
+/**
+ * A random spot for a new item: inside the arena, clear of walls, and not right
+ * next to a living player or another item. Null if none was found.
+ */
+export function findItemSpot(state: GameState): { x: number; y: number } | null {
+  const { map, config, rng } = state;
+  const margin = config.items.radius + 8;
+  for (let attempt = 0; attempt < 40; attempt++) {
+    const x = rng.items.range(margin, map.width - margin);
+    const y = rng.items.range(margin, map.height - margin);
+    if (map.walls.some((w) => circleOverlapsRect(x, y, margin, w))) continue;
+    if (state.players.some((p) => p.alive && length(p.x - x, p.y - y) < 80)) continue;
+    if (state.items.some((i) => length(i.x - x, i.y - y) < 60)) continue;
+    return { x, y };
+  }
+  return null;
+}
+
+/** Every items.spawnInterval, add a weighted-random item while fewer than items.maxOnMap spawned items exist. */
+export function updateItemSpawner(state: GameState): void {
+  if (state.itemSpawnTimer > 0) return;
+  state.itemSpawnTimer = secondsToTicks(state.config.items.spawnInterval, state.config);
+  const spawned = state.items.filter((i) => i.origin === 'random').length;
+  if (spawned >= state.config.items.maxOnMap) return;
+  const type = state.rng.items.weighted(state.config.items.weights, ITEM_TYPES);
+  if (!type) return;
+  const spot = findItemSpot(state);
+  if (!spot) return;
+  const id = state.nextEntityId++;
+  state.items.push({ id, type, x: spot.x, y: spot.y, ammo: defaultItemAmmo(state, type), origin: 'random', padIndex: -1 });
+  state.events.push({ type: 'itemSpawn', tick: state.tick, itemId: id, itemType: type, x: spot.x, y: spot.y });
 }

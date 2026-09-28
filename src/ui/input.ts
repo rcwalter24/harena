@@ -5,15 +5,18 @@ import type { Renderer } from '../render/renderer.ts';
 /**
  * Keyboard + mouse player for testing rule feel.
  * WASD / arrows: move · mouse: aim · left click or Space: attack ·
- * 1: knife · 2: gun · Q: toggle weapon.
+ * 1: knife · 2: gun · 3: launcher · Q: next owned weapon · E or right click: plant mine.
  */
 export class HumanController implements Controller {
   readonly label = 'human';
   private readonly keys = new Set<string>();
   private mouse: { x: number; y: number } | null = null;
   private mouseDown = false;
+  /** A click since the last tick; a press + release shorter than a tick still attacks once. */
+  private clicked = false;
   private pendingWeapon: Weapon | null = null;
   private toggleWeapon = false;
+  private plantMine = false;
   private readonly canvas: HTMLCanvasElement;
   private readonly renderer: Renderer;
   private readonly cleanup: Array<() => void> = [];
@@ -29,7 +32,11 @@ export class HumanController implements Controller {
     });
     this.listen(canvas, 'mousemove', (e) => this.onMouse(e as MouseEvent));
     this.listen(canvas, 'mousedown', (e) => {
-      if ((e as MouseEvent).button === 0) this.mouseDown = true;
+      if ((e as MouseEvent).button === 0) {
+        this.mouseDown = true;
+        this.clicked = true;
+      }
+      if ((e as MouseEvent).button === 2) this.plantMine = true;
       this.onMouse(e as MouseEvent);
     });
     this.listen(window, 'mouseup', (e) => {
@@ -57,6 +64,9 @@ export class HumanController implements Controller {
       this.keys.add(e.code);
       if (e.code === 'Digit1') this.pendingWeapon = 'knife';
       if (e.code === 'Digit2') this.pendingWeapon = 'gun';
+      if (e.code === 'Digit3') this.pendingWeapon = 'launcher';
+      if (e.code === 'KeyE' && !e.repeat) this.plantMine = true;
+      if (e.code === 'Space' && !e.repeat) this.clicked = true;
       if (e.code === 'KeyQ' && !e.repeat) this.toggleWeapon = true;
     } else {
       this.keys.delete(e.code);
@@ -68,6 +78,8 @@ export class HumanController implements Controller {
     if (!self.alive) {
       this.pendingWeapon = null;
       this.toggleWeapon = false;
+      this.plantMine = false;
+      this.clicked = false;
       return IDLE_ACTION;
     }
     const k = this.keys;
@@ -83,10 +95,19 @@ export class HumanController implements Controller {
       aim = Math.atan2(w.y - self.y, w.x - self.x);
     }
     let weapon = this.pendingWeapon;
-    if (this.toggleWeapon) weapon = self.weapon === 'gun' ? 'knife' : 'gun';
+    if (this.toggleWeapon) {
+      const owned: Weapon[] = ['knife'];
+      if (self.hasGun) owned.push('gun');
+      if (self.hasLauncher) owned.push('launcher');
+      weapon = owned[(owned.indexOf(self.weapon) + 1) % owned.length];
+    }
+    const plantMine = this.plantMine;
+    const attack = this.mouseDown || k.has('Space') || this.clicked;
     this.pendingWeapon = null;
     this.toggleWeapon = false;
-    return { moveX: mx, moveY: my, aim, attack: this.mouseDown || k.has('Space'), weapon, plantMine: false };
+    this.plantMine = false;
+    this.clicked = false;
+    return { moveX: mx, moveY: my, aim, attack, weapon, plantMine };
   }
 
   dispose(): void {

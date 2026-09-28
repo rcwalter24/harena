@@ -1,14 +1,14 @@
 import { secondsToTicks } from '../config.ts';
 import { DEG, dcos, direction, length } from '../dmath.ts';
 import { lineOfSight, segmentCircleHit, segmentRectHit } from '../geometry.ts';
-import type { ActionInput, GameState, PlayerState, Weapon } from '../types.ts';
+import type { ActionInput, DamageSource, GameState, PlayerState } from '../types.ts';
 
 /**
  * Apply damage to a target. Shield absorbs first. Players that are dead, already
  * at 0 hp this tick, or invulnerable take nothing. Returns the damage dealt.
  */
 export function applyDamage(
-  state: GameState, target: PlayerState, amount: number, attacker: PlayerState, weapon: Weapon,
+  state: GameState, target: PlayerState, amount: number, attacker: PlayerState, weapon: DamageSource,
 ): number {
   if (!target.alive || target.hp <= 0 || target.invulnerableTimer > 0 || amount <= 0) return 0;
   const shieldDamage = Math.min(target.shield, amount);
@@ -19,7 +19,7 @@ export function applyDamage(
   target.lastDamagerId = attacker.id;
   target.lastDamageWeapon = weapon;
   target.stats.damageTaken += dealt;
-  attacker.stats.damageDealt += dealt;
+  if (attacker !== target) attacker.stats.damageDealt += dealt;
   state.events.push({
     type: 'hit', tick: state.tick, attackerId: attacker.id, targetId: target.id,
     weapon, damage: dealt, shieldDamage, hpDamage,
@@ -77,6 +77,24 @@ export function applyAttacks(state: GameState, actions: readonly ActionInput[]):
       };
       state.bullets.push(bullet);
       state.events.push({ type: 'shot', tick: state.tick, playerId: p.id, bulletId: bullet.id });
+    } else if (p.weapon === 'launcher') {
+      if (p.launcherCooldown > 0 || p.grenades <= 0 || !p.hasLauncher) continue;
+      p.launcherCooldown = secondsToTicks(config.launcher.cooldown, config);
+      p.invulnerableTimer = 0;
+      p.grenades--;
+      p.stats.grenadesFired++;
+      const f = direction(p.facing);
+      const grenade = {
+        id: state.nextEntityId++,
+        ownerId: p.id,
+        x: p.x,
+        y: p.y,
+        vx: f.x * config.launcher.grenadeSpeed,
+        vy: f.y * config.launcher.grenadeSpeed,
+        traveled: 0,
+      };
+      state.grenades.push(grenade);
+      state.events.push({ type: 'grenade', tick: state.tick, playerId: p.id, grenadeId: grenade.id });
     }
   }
 }

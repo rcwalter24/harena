@@ -1,5 +1,6 @@
-import { secondsToTicks } from '../config.ts';
-import { DEG, length, normalizeAngle } from '../dmath.ts';
+import { secondsToTicks, type ItemType } from '../config.ts';
+import { DEG, dcos, dsin, length, normalizeAngle } from '../dmath.ts';
+import { resolveCircleWalls } from '../geometry.ts';
 import type { GameState, PlayerState, SpawnPoint } from '../types.ts';
 
 /** Handle players whose hp reached 0 this tick: lose a life, drop the gun, credit the kill. */
@@ -16,18 +17,32 @@ export function handleDeaths(state: GameState): void {
     const killer = p.lastDamagerId >= 0 && p.lastDamagerId !== p.id ? state.players[p.lastDamagerId] : null;
     if (killer) killer.stats.kills++;
 
-    if (p.hasGun && p.ammo > 0) {
+    // Drop gear where the player died, slightly spread so the items don't stack.
+    const drops: Array<[ItemType, number]> = [];
+    if (p.hasGun && p.ammo > 0) drops.push(['gun', p.ammo]);
+    if (p.hasLauncher && p.grenades > 0) drops.push(['launcher', p.grenades]);
+    if (p.mines > 0) drops.push(['mines', p.mines]);
+    drops.forEach(([type, ammo], i) => {
+      const offset = drops.length > 1 ? 14 : 0;
+      const angle = (i * 2 * Math.PI) / drops.length;
+      const pos = resolveCircleWalls(
+        { x: p.x + offset * dcos(angle), y: p.y + offset * dsin(angle) },
+        state.config.items.radius, state.map.walls, state.map.width, state.map.height,
+      );
       const id = state.nextEntityId++;
-      state.items.push({ id, type: 'gun', x: p.x, y: p.y, ammo: p.ammo, origin: 'drop', padIndex: -1 });
-      state.events.push({ type: 'itemSpawn', tick: state.tick, itemId: id, itemType: 'gun', x: p.x, y: p.y });
-    }
+      state.items.push({ id, type, x: pos.x, y: pos.y, ammo, origin: 'drop', padIndex: -1 });
+      state.events.push({ type: 'itemSpawn', tick: state.tick, itemId: id, itemType: type, x: pos.x, y: pos.y });
+    });
     p.hasGun = false;
     p.ammo = 0;
+    p.hasLauncher = false;
+    p.grenades = 0;
+    p.mines = 0;
     p.weapon = 'knife';
 
     state.events.push({
       type: 'death', tick: state.tick, playerId: p.id, killerId: killer ? killer.id : -1,
-      weapon: killer ? p.lastDamageWeapon : null, livesLeft: p.lives,
+      weapon: p.lastDamageWeapon, livesLeft: p.lives,
     });
 
     if (p.lives <= 0) {

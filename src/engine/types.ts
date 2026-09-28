@@ -4,6 +4,9 @@ import type { Rng } from './rng.ts';
 
 export type Weapon = 'knife' | 'gun' | 'launcher';
 
+/** What dealt damage: a weapon, or a mine. */
+export type DamageSource = Weapon | 'mine';
+
 export interface SpawnPoint {
   x: number;
   y: number;
@@ -55,6 +58,10 @@ export interface PlayerStats {
   shotsHit: number;
   knifeSwings: number;
   knifeHits: number;
+  grenadesFired: number;
+  /** Grenades whose explosion damaged at least one enemy. */
+  grenadeHits: number;
+  minesPlanted: number;
   itemsPicked: number;
   itemsByType: Record<ItemType, number>;
 }
@@ -93,7 +100,7 @@ export interface PlayerState {
   respawnTimer: number;
   /** Id of the last player who damaged this one during the current life, or -1. */
   lastDamagerId: number;
-  lastDamageWeapon: Weapon | null;
+  lastDamageWeapon: DamageSource | null;
   stats: PlayerStats;
 }
 
@@ -108,12 +115,42 @@ export interface Bullet {
   traveled: number;
 }
 
+export interface Grenade {
+  id: number;
+  ownerId: number;
+  x: number;
+  y: number;
+  /** Velocity, u/s. */
+  vx: number;
+  vy: number;
+  traveled: number;
+}
+
+export interface Mine {
+  id: number;
+  ownerId: number;
+  x: number;
+  y: number;
+  /** Ticks until it explodes. */
+  fuseTimer: number;
+}
+
+export interface Explosion {
+  ownerId: number;
+  source: 'grenade' | 'mine';
+  /** Id of the grenade or mine that exploded. */
+  sourceId: number;
+  x: number;
+  y: number;
+  radius: number;
+}
+
 export interface Item {
   id: number;
   type: ItemType;
   x: number;
   y: number;
-  /** Ammo carried by a gun item. */
+  /** Ammo carried by a gun item, grenades by a launcher item, mine count by a mines item. */
   ammo: number;
   /** 'random' = item spawner, 'pad' = map gun pad, 'drop' = gun dropped on death. */
   origin: 'random' | 'pad' | 'drop';
@@ -133,9 +170,12 @@ export interface GunPad {
 export type GameEvent =
   | { type: 'shot'; tick: number; playerId: number; bulletId: number }
   | { type: 'swing'; tick: number; playerId: number; hitIds: number[] }
-  | { type: 'hit'; tick: number; attackerId: number; targetId: number; weapon: Weapon; damage: number; shieldDamage: number; hpDamage: number }
+  | { type: 'hit'; tick: number; attackerId: number; targetId: number; weapon: DamageSource; damage: number; shieldDamage: number; hpDamage: number }
+  | { type: 'grenade'; tick: number; playerId: number; grenadeId: number }
+  | { type: 'minePlanted'; tick: number; playerId: number; mineId: number; x: number; y: number }
+  | { type: 'explosion'; tick: number; ownerId: number; source: 'grenade' | 'mine'; sourceId: number; x: number; y: number; radius: number; hitIds: number[] }
   | { type: 'bulletEnd'; tick: number; bulletId: number; x: number; y: number; reason: 'wall' | 'player' | 'range' }
-  | { type: 'death'; tick: number; playerId: number; killerId: number; weapon: Weapon | null; livesLeft: number }
+  | { type: 'death'; tick: number; playerId: number; killerId: number; weapon: DamageSource | null; livesLeft: number }
   | { type: 'eliminated'; tick: number; playerId: number }
   | { type: 'respawn'; tick: number; playerId: number; x: number; y: number }
   | { type: 'switch'; tick: number; playerId: number; weapon: Weapon }
@@ -167,6 +207,10 @@ export interface GameState {
   timeLimitTicks: number;
   players: PlayerState[];
   bullets: Bullet[];
+  grenades: Grenade[];
+  mines: Mine[];
+  /** Explosions that happened during the most recent step(). */
+  explosions: Explosion[];
   items: Item[];
   gunPads: GunPad[];
   nextEntityId: number;
