@@ -40,6 +40,49 @@ export function getBot(file: string): BotEntry | undefined {
   return BOTS.find((b) => b.file === file);
 }
 
+// Display-name overrides set on the setup page. Kept in this browser only: renaming never
+// touches the bot file, so its source hash and review stay valid.
+const ALIAS_KEY = 'harena.botAliases.v1';
+export const MAX_ALIAS_LENGTH = 24;
+
+function loadAliases(): Record<string, string> {
+  try {
+    const parsed: unknown = JSON.parse(localStorage.getItem(ALIAS_KEY) ?? '{}');
+    if (!parsed || typeof parsed !== 'object') return {};
+    return Object.fromEntries(Object.entries(parsed).filter((e): e is [string, string] => typeof e[1] === 'string'));
+  } catch {
+    return {};
+  }
+}
+
+const aliases = loadAliases();
+
+/** Collapse whitespace, drop control characters and cap the length. */
+export function cleanAlias(text: string): string {
+  return text.replace(/[\u0000-\u001f\u007f]/g, '').replace(/\s+/g, ' ').trim().slice(0, MAX_ALIAS_LENGTH).trim();
+}
+
+/** Name shown in the UI, matches and replays: the alias if set, else meta.name / file name. */
+export function displayName(bot: BotEntry): string {
+  return aliases[bot.file] ?? bot.name;
+}
+
+export function hasAlias(bot: BotEntry): boolean {
+  return bot.file in aliases;
+}
+
+/** Set a bot's alias; an empty name or the bot's own name removes it. */
+export function setAlias(bot: BotEntry, text: string): void {
+  const alias = cleanAlias(text);
+  if (alias === '' || alias === bot.name) delete aliases[bot.file];
+  else aliases[bot.file] = alias;
+  try {
+    localStorage.setItem(ALIAS_KEY, JSON.stringify(aliases));
+  } catch {
+    // Storage unavailable: the alias lasts until the page reloads.
+  }
+}
+
 /** Saved reviews from the dev server (empty when the API isn't available, e.g. a static build). */
 export async function fetchReviews(): Promise<Record<string, BotReview>> {
   try {

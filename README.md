@@ -25,6 +25,9 @@ simulation; the browser renders it on a canvas with interpolation.
 3. Review it with the **Review** button or `npm run review`. Static-check failures block the bot;
    Jev (TypeSafe AI) findings are warnings, and the choice is yours. Reviews are saved as
    `bots/<name>.review.json` and flagged as stale when the bot changes.
+4. Optionally click its name on the setup page to rename it (e.g. after the AI that wrote it).
+   The name is stored in this browser only; the bot file and its review are left untouched.
+   Batch matches use file names.
 
 The Jev API key is read at runtime from `TYPESAFE_API_KEY` or `~/.secrets/typesafe`
 (override the path with `TYPESAFE_KEY_FILE`); it never reaches the browser.

@@ -5,7 +5,7 @@ import { drawMapPreview } from '../render/mapPreview.ts';
 import { DUMMY_KINDS, type DummyKind } from '../match/dummies.ts';
 import type { BotReview } from '../review/jev.ts';
 import { playerColor } from '../render/renderer.ts';
-import { BOTS, fetchReviews, getBot, requestReview, reviewBadge, type BotEntry, type ReviewBadge } from './bots.ts';
+import { BOTS, displayName, fetchReviews, getBot, hasAlias, MAX_ALIAS_LENGTH, requestReview, reviewBadge, setAlias, type BotEntry, type ReviewBadge } from './bots.ts';
 import { MAPS } from './maps.ts';
 import { loadSetup, randomSeed, saveSetup, type MatchSetup, type SlotSpec } from './matchSetup.ts';
 
@@ -55,6 +55,8 @@ export function mountSetup(app: HTMLElement, callbacks: SetupCallbacks): () => v
   let setup = sanitizeSetup(loadSetup() ?? defaultSetup());
   let reviews: Record<string, BotReview> = {};
   const reviewing = new Set<string>();
+  /** Bot whose name is being edited, and the text typed so far (survives re-renders). */
+  let renaming: { file: string; draft: string } | null = null;
   const maxPlayers = DEFAULT_CONFIG.match.maxPlayers;
 
   app.innerHTML = `
@@ -116,7 +118,7 @@ export function mountSetup(app: HTMLElement, callbacks: SetupCallbacks): () => v
     if (slot.kind === 'human') return { name: 'You', sub: 'keyboard + mouse' };
     if (slot.kind === 'dummy') return { name: `${slot.dummy} dummy`, sub: 'scripted test opponent' };
     const bot = getBot(slot.file)!;
-    return { name: bot.name, sub: slot.file, badge: reviewBadge(bot, reviews[slot.file]) };
+    return { name: displayName(bot), sub: slot.file, badge: reviewBadge(bot, reviews[slot.file]) };
   }
 
   function renderBots(): void {
@@ -144,9 +146,14 @@ export function mountSetup(app: HTMLElement, callbacks: SetupCallbacks): () => v
     const details = jev
       ? `quality ${jev.quality.score.toFixed(1)}/${jev.quality.max} · interface: ${jev.conformance.choice} · ${new Date(review!.reviewedAt).toLocaleString()}`
       : '';
+    const editing = renaming?.file === bot.file;
+    const title = editing
+      ? `<input class="rename-input" maxlength="${MAX_ALIAS_LENGTH}" placeholder="${escapeHtml(bot.name)}" />`
+      : `<span class="bot-title" title="Click to rename">${escapeHtml(displayName(bot))}</span>`;
+    const fileInfo = escapeHtml([bot.file, hasAlias(bot) ? `renamed from ${bot.name}` : '', bot.author].filter(Boolean).join(' · '));
     row.innerHTML = `
       <div class="bot-main">
-        <div class="bot-name">${escapeHtml(bot.name)} <span class="bot-file">${escapeHtml(bot.file)}${bot.author ? ` · ${escapeHtml(bot.author)}` : ''}</span></div>
+        <div class="bot-name">${title} <span class="bot-file" title="${fileInfo}">${fileInfo}</span></div>
         <span class="badge ${badge}">${reviewing.has(bot.file) ? 'reviewing…' : BADGE_TEXT[badge]}</span>
         <button class="review" ${reviewing.has(bot.file) ? 'disabled' : ''} title="Static check + Jev AI review">Review</button>
         <button class="add" ${!bot.static.ok || setup.slots.length >= maxPlayers ? 'disabled' : ''}>+ Add</button>
@@ -154,7 +161,44 @@ export function mountSetup(app: HTMLElement, callbacks: SetupCallbacks): () => v
       ${reasons.length || details ? `<div class="bot-reasons">${reasons.map((r) => `<div>${escapeHtml(r)}</div>`).join('')}${details ? `<div class="muted">${escapeHtml(details)}</div>` : ''}</div>` : ''}`;
     row.querySelector<HTMLButtonElement>('.add')!.onclick = () => addSlot({ kind: 'bot', file: bot.file });
     row.querySelector<HTMLButtonElement>('.review')!.onclick = () => void runReview(bot.file);
+    if (editing) wireRenameInput(row.querySelector<HTMLInputElement>('.rename-input')!, bot);
+    else row.querySelector<HTMLElement>('.bot-title')!.onclick = () => startRename(bot);
     return row;
+  }
+
+  function startRename(bot: BotEntry): void {
+    renaming = { file: bot.file, draft: displayName(bot) };
+    renderBots();
+  }
+
+  /** Enter or leaving the field saves; Escape cancels; an empty name restores the bot's own. */
+  function wireRenameInput(input: HTMLInputElement, bot: BotEntry): void {
+    input.value = renaming!.draft;
+    input.oninput = () => {
+      if (renaming) renaming.draft = input.value;
+    };
+    const finish = (save: boolean) => {
+      if (renaming?.file !== bot.file) return;
+      if (save) setAlias(bot, input.value);
+      renaming = null;
+      // Redraw only this row (and the seats using it) so a click elsewhere that caused the
+      // blur still lands on its button.
+      input.closest('.bot-row')?.replaceWith(botRow(bot));
+      if (setup.slots.some((s) => s.kind === 'bot' && s.file === bot.file)) renderSlots();
+    };
+    input.onkeydown = (e) => {
+      if (e.key === 'Enter') finish(true);
+      else if (e.key === 'Escape') finish(false);
+    };
+    // A blur caused by a re-render (the input was removed) is not the user leaving the field.
+    input.onblur = () => {
+      if (input.isConnected) finish(true);
+    };
+    requestAnimationFrame(() => {
+      if (!input.isConnected) return;
+      input.focus();
+      input.select();
+    });
   }
 
   async function runReview(file: string): Promise<void> {

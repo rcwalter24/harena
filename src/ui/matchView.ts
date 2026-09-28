@@ -10,7 +10,7 @@ import { BotController } from '../match/supervisor.ts';
 import { playerColor } from '../render/renderer.ts';
 import { createBrowserWorker } from '../sandbox/browser/host.ts';
 import { ArenaShell } from './arenaShell.ts';
-import { getBot } from './bots.ts';
+import { displayName, getBot } from './bots.ts';
 import { HumanController } from './input.ts';
 import { randomSeed, saveSetup, type MatchSetup } from './matchSetup.ts';
 import { getMap } from './maps.ts';
@@ -18,7 +18,12 @@ import { downloadJson, escapeHtml, showResults } from './results.ts';
 
 /** Display names for the seats, numbering duplicates ("Gunner", "Gunner #2"). */
 function seatNames(setup: MatchSetup): string[] {
-  const base = setup.slots.map((s) => (s.kind === 'bot' ? getBot(s.file)?.name ?? s.file : s.kind === 'human' ? 'You' : `${s.dummy} dummy`));
+  const base = setup.slots.map((s) => {
+    if (s.kind === 'human') return 'You';
+    if (s.kind === 'dummy') return `${s.dummy} dummy`;
+    const bot = getBot(s.file);
+    return bot ? displayName(bot) : s.file;
+  });
   const seen = new Map<string, number>();
   return base.map((name) => {
     const n = (seen.get(name) ?? 0) + 1;
