@@ -27,7 +27,7 @@ export default defineConfig({
     rollupOptions: {
       output: {
         entryFileNames: 'harena-sim.mjs',
-        inlineDynamicImports: true,
+        codeSplitting: false,
         banner: `#!/usr/bin/env node\n// Harena test kit (build ${stamp}). Run: node harena-sim.mjs --help\n// MIT License. Source: https://github.com/rcwalter24/harena`,
       },
     },

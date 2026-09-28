@@ -207,7 +207,7 @@ Items are circles of radius 12. You pick one up when your centre is within
 
 Random items appear every 6 s, starting 3 s into the match, at random free spots
 (inside the safe zone once it shrinks). Spawning pauses while 6 spawned items are on the map.
-Spawn weights: ammo 30, shield 25, health 25, gun 12, life 8, launcher 6, mines 10.
+Spawn weights: ammo 30, shield 25, health 25, gun 12, life 8, launcher 20, mines 10.
 
 ### 5.11 Bushes
 - Bushes are rectangles in `info.map.bushes`. They block nothing: players, bullets, grenades and
@@ -691,7 +691,7 @@ Every value below is also available at runtime as `info.rules.<path>`, for examp
 | `items.weights.health` | 25 | weight | Relative spawn weight of health items. |
 | `items.weights.gun` | 12 | weight | Relative spawn weight of gun items. |
 | `items.weights.life` | 8 | weight | Relative spawn weight of extra-life items. |
-| `items.weights.launcher` | 6 | weight | Relative spawn weight of grenade launcher items. |
+| `items.weights.launcher` | 20 | weight | Relative spawn weight of grenade launcher items. |
 | `items.weights.mines` | 10 | weight | Relative spawn weight of mines items. |
 
 **match**
