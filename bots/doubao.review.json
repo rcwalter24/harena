@@ -1,8 +1,8 @@
 {
   "version": 1,
-  "file": "chaser.js",
-  "sourceHash": "171a1df563ebe8",
-  "reviewedAt": "2026-09-28T02:34:31.372Z",
+  "file": "doubao.js",
+  "sourceHash": "0579473e46538f",
+  "reviewedAt": "2026-09-28T02:34:17.253Z",
   "static": {
     "ok": true,
     "findings": []
@@ -11,23 +11,23 @@
     "model": "jev-1.13.0",
     "risks": {
       "outsideAccess": 0.03,
-      "globalTampering": 0.04,
+      "globalTampering": 0.06,
       "backgroundWork": 0.03,
       "obfuscation": 0.05,
       "actionExploit": 0.03,
-      "reviewerInjection": 0.03
+      "reviewerInjection": 0.05
     },
     "conformance": {
       "choice": "follows",
-      "confidence": 0.75,
-      "follows": 0.84
+      "confidence": 0.65,
+      "follows": 0.77
     },
     "quality": {
-      "score": 1.76,
-      "confidence": 0.75,
+      "score": 2.98,
+      "confidence": 0.98,
       "max": 3
     },
-    "inputTokens": 1277
+    "inputTokens": 5092
   },
   "verdict": "pass",
   "reasons": []

@@ -1,8 +1,8 @@
 {
   "version": 1,
-  "file": "gunner.js",
-  "sourceHash": "09e8e3b957e52b",
-  "reviewedAt": "2026-09-28T02:47:59.886Z",
+  "file": "astra.js",
+  "sourceHash": "01fc6d8ac2fb07",
+  "reviewedAt": "2026-09-28T03:07:26.502Z",
   "static": {
     "ok": true,
     "findings": []
@@ -10,24 +10,24 @@
   "jev": {
     "model": "jev-1.13.0",
     "risks": {
-      "outsideAccess": 0.02,
-      "globalTampering": 0.06,
+      "outsideAccess": 0.06,
+      "globalTampering": 0.11,
       "backgroundWork": 0.03,
-      "obfuscation": 0.04,
+      "obfuscation": 0.07,
       "actionExploit": 0.03,
       "reviewerInjection": 0.04
     },
     "conformance": {
       "choice": "follows",
-      "confidence": 0.84,
-      "follows": 0.9
+      "confidence": 0.89,
+      "follows": 0.93
     },
     "quality": {
-      "score": 2.98,
-      "confidence": 0.98,
+      "score": 2.99,
+      "confidence": 0.99,
       "max": 3
     },
-    "inputTokens": 4237
+    "inputTokens": 10734
   },
   "verdict": "pass",
   "reasons": []
