@@ -75,8 +75,8 @@ function mapsTable(): string {
     .filter((f) => f.endsWith('.json'))
     .sort()
     .map((f) => validateMap(JSON.parse(readFileSync(resolve(dir, f), 'utf8'))));
-  const rows = maps.map((m) => `| \`${m.id}\` | ${m.name} | ${m.width} × ${m.height} | ${m.walls.length} | ${m.spawns.length} | ${m.gunSpawns.length} |`);
-  return ['| id | Name | Size | Walls | Spawns | Gun pads |', '|---|---|---|---|---|---|', ...rows].join('\n');
+  const rows = maps.map((m) => `| \`${m.id}\` | ${m.name} | ${m.width} × ${m.height} | ${m.walls.length} | ${m.bushes?.length ?? 0} | ${m.spawns.length} | ${m.gunSpawns.length} |`);
+  return ['| id | Name | Size | Walls | Bushes | Spawns | Gun pads |', '|---|---|---|---|---|---|---|', ...rows].join('\n');
 }
 
 function forbiddenList(): string {

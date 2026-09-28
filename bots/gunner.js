@@ -104,12 +104,13 @@ function mineEscape(state, me) {
 
 // ---------- decision ----------
 
+// Nearest living enemy, preferring ones we can see (hidden ones only have a stale position).
 function nearestEnemy(state, me) {
   let best = null;
   let bestD = Infinity;
   for (const p of state.players) {
     if (p.id === me.id || !p.alive) continue;
-    const d = dist(p, me);
+    const d = dist(p, me) + (p.visible ? 0 : 400);
     if (d < bestD) {
       bestD = d;
       best = p;
@@ -195,8 +196,10 @@ export function decide(state) {
   const aim = Math.atan2(lead.y - me.y, lead.x - me.x);
   const onTarget = Math.abs(angleDiff(aim, me.facing)) < 0.08;
 
+  // Only shoot at hidden enemies we saw a moment ago; older positions are guesses.
+  const fresh = enemy.visible || enemy.seenAgo < 0.5;
   let attack = false;
-  if (me.weapon === weapon && onTarget) {
+  if (me.weapon === weapon && onTarget && fresh) {
     if (weapon === 'gun') {
       attack = d < rules.gun.range * 0.8 && clearShot(me, lead, rules.gun.bulletRadius);
     } else {

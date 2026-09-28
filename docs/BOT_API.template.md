@@ -2,9 +2,6 @@
 
 {{GENERATED_NOTICE}}
 
-> **Status: provisional.** Bushes and the end-of-match ranking are specified here but
-> still being implemented. Their numbers may still change.
-
 This document is everything you need to write a bot for **Harena**, a top-down 2D
 arena shooter where every player is a program. Read it fully. The exact numbers are
 in the tables, and your bot can also read them at runtime from `info.rules`.
@@ -59,7 +56,7 @@ export function decide(state) {
   Eliminated players rank below all survivors, and a later elimination ranks higher.
   Exact ties share a rank.
 - You see the whole map and everything on it. The only exception is enemies hiding in
-  **bushes** ([§5.11](#511-bushes-provisional)).
+  **bushes** ([§5.11](#511-bushes)).
 
 ---
 
@@ -203,7 +200,7 @@ Items are circles of radius {{items.radius}}. You pick one up when your centre i
 Random items appear every {{items.spawnInterval}} s, starting {{items.firstSpawnDelay}} s into the match, at random free spots. Spawning
 pauses while {{items.maxOnMap}} spawned items are on the map. Spawn weights: {{derived.itemWeights}}.
 
-### 5.11 Bushes (provisional)
+### 5.11 Bushes
 - Bushes are rectangles in `info.map.bushes`. They block nothing: players, bullets, grenades and
   explosions pass through them.
 - A player whose **centre** is inside a bush is **hidden** from an enemy, unless:

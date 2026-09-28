@@ -1,5 +1,5 @@
 import type { GameConfig, ItemType } from './config.ts';
-import type { Rect } from './geometry.ts';
+import { boundaryWalls, type Rect } from './geometry.ts';
 import type { Rng } from './rng.ts';
 
 export type Weapon = 'knife' | 'gun' | 'launcher';
@@ -26,6 +26,17 @@ export interface MapData {
   /** Areas that hide players from enemies. They block nothing. */
   bushes?: Rect[];
 }
+
+/** Walls plus the map border, for projectile collisions. */
+export function solidRects(map: MapData): Rect[] {
+  let cached = solidCache.get(map);
+  if (!cached) {
+    cached = [...map.walls, ...boundaryWalls(map.width, map.height)];
+    solidCache.set(map, cached);
+  }
+  return cached;
+}
+const solidCache = new WeakMap<MapData, Rect[]>();
 
 /** Sanitized, engine-facing per-tick input for one player. */
 export interface ActionInput {
@@ -98,6 +109,8 @@ export interface PlayerState {
   switchTimer: number;
   invulnerableTimer: number;
   respawnTimer: number;
+  /** Ticks during which the player is revealed even inside a bush (after attacking or being hurt). */
+  noiseTimer: number;
   /** Id of the last player who damaged this one during the current life, or -1. */
   lastDamagerId: number;
   lastDamageWeapon: DamageSource | null;
@@ -197,6 +210,16 @@ export interface MatchResult {
   ranking: RankEntry[];
 }
 
+/** What one player last saw of another (used for players hidden in bushes). */
+export interface Sighting {
+  tick: number;
+  x: number;
+  y: number;
+  vx: number;
+  vy: number;
+  facing: number;
+}
+
 export interface GameState {
   config: GameConfig;
   map: MapData;
@@ -216,6 +239,8 @@ export interface GameState {
   nextEntityId: number;
   /** Ticks until the next random item spawn. */
   itemSpawnTimer: number;
+  /** lastSeen[viewer][target]: the target as the viewer last saw it. */
+  lastSeen: Sighting[][];
   /** Events produced by the most recent step(). */
   events: GameEvent[];
   over: boolean;

@@ -133,3 +133,17 @@ export function lineOfSight(x0: number, y0: number, x1: number, y1: number, wall
   }
   return true;
 }
+
+/**
+ * Four thick rectangles just outside a width × height arena, so projectiles can
+ * treat the map border like any other wall.
+ */
+export function boundaryWalls(width: number, height: number): Rect[] {
+  const t = 1000;
+  return [
+    { x: -t, y: -t, w: width + 2 * t, h: t },
+    { x: -t, y: height, w: width + 2 * t, h: t },
+    { x: -t, y: 0, w: t, h: height },
+    { x: width, y: 0, w: t, h: height },
+  ];
+}

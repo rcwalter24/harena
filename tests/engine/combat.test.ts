@@ -131,6 +131,21 @@ describe('gun', () => {
     expect(s.players[1].hp).toBe(100);
   });
 
+  it('the map border stops bullets', () => {
+    const s = testGame();
+    place(s, 0, 100, 500, Math.PI); // facing the left edge
+    place(s, 1, 900, 900);
+    Object.assign(s.players[0], { hasGun: true, weapon: 'gun', ammo: 1 });
+    step(s, [act({ attack: true })]);
+    let end: any = null;
+    for (let i = 0; i < 20 && !end; i++) {
+      for (const e of step(s, [])) if (e.type === 'bulletEnd') end = e;
+    }
+    expect(end).toMatchObject({ reason: 'wall' });
+    expect(end.x).toBeCloseTo(4); // bullet radius from the edge
+    expect(s.bullets).toHaveLength(0);
+  });
+
   it('bullets expire at max range', () => {
     const s = testGame();
     place(s, 0, 20, 20, 0);

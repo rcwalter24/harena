@@ -5,6 +5,8 @@ import { dueMines, plantMines, resolveExplosions, updateGrenades } from './syste
 import { handlePickups, refillGunPads, updateItemSpawner } from './systems/items.ts';
 import { handleDeaths, handleRespawns, placeAtSpawn } from './systems/lives.ts';
 import { applyMovement, applyTurning, applyWeaponSwitches } from './systems/movement.ts';
+import { checkMatchEnd } from './systems/victory.ts';
+import { initSightings, updateSightings } from './systems/visibility.ts';
 import { IDLE_ACTION, type ActionInput, type GameEvent, type GameState, type MapData, type PlayerSetup, type PlayerState } from './types.ts';
 
 export interface GameOptions {
@@ -49,6 +51,7 @@ export function createGame(opts: GameOptions): GameState {
     gunPads: map.gunSpawns.map((g) => ({ x: g.x, y: g.y, itemId: -1, refillTimer: 0 })),
     nextEntityId: 1,
     itemSpawnTimer: secondsToTicks(config.items.firstSpawnDelay, config),
+    lastSeen: [],
     events: [],
     over: false,
     result: null,
@@ -83,6 +86,7 @@ export function createGame(opts: GameOptions): GameState {
       switchTimer: 0,
       invulnerableTimer: 0,
       respawnTimer: 0,
+      noiseTimer: 0,
       lastDamagerId: -1,
       lastDamageWeapon: null,
       stats: emptyStats(),
@@ -92,6 +96,7 @@ export function createGame(opts: GameOptions): GameState {
   });
 
   refillGunPads(state);
+  initSightings(state);
   state.events = [];
   return state;
 }
@@ -107,6 +112,7 @@ function tickTimers(state: GameState): void {
       p.mineCooldown = dec(p.mineCooldown);
       p.switchTimer = dec(p.switchTimer);
       p.invulnerableTimer = dec(p.invulnerableTimer);
+      p.noiseTimer = dec(p.noiseTimer);
     } else if (!p.eliminated) {
       p.respawnTimer = dec(p.respawnTimer);
     }
@@ -150,9 +156,7 @@ export function step(state: GameState, actions: readonly (ActionInput | undefine
   tickTimers(state);
 
   state.tick++;
-  if (state.timeLimitTicks > 0 && state.tick >= state.timeLimitTicks) {
-    state.over = true;
-    state.events.push({ type: 'matchEnd', tick: state.tick, reason: 'timeLimit' });
-  }
+  updateSightings(state);
+  checkMatchEnd(state);
   return state.events;
 }

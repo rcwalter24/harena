@@ -1,7 +1,7 @@
 import { secondsToTicks } from '../config.ts';
 import { length } from '../dmath.ts';
 import { lineOfSight, segmentCircleHit, segmentRectHit } from '../geometry.ts';
-import type { ActionInput, Explosion, GameState, PlayerState } from '../types.ts';
+import { solidRects, type ActionInput, type Explosion, type GameState, type PlayerState } from '../types.ts';
 import { applyDamage } from './combat.ts';
 
 /** Plant mines for players who asked to (any weapon in hand, even while switching). */
@@ -12,6 +12,7 @@ export function plantMines(state: GameState, actions: readonly ActionInput[]): v
     p.mines--;
     p.mineCooldown = secondsToTicks(config.mines.plantCooldown, config);
     p.invulnerableTimer = 0;
+    p.noiseTimer = secondsToTicks(config.bushes.noiseRevealTime, config);
     p.stats.minesPlanted++;
     const mine = { id: state.nextEntityId++, ownerId: p.id, x: p.x, y: p.y, fuseTimer: Math.max(1, secondsToTicks(config.mines.fuse, config)) };
     state.mines.push(mine);
@@ -43,7 +44,7 @@ export function updateGrenades(state: GameState): Explosion[] {
     const y1 = y0 + (g.vy / launcher.grenadeSpeed) * stepLen;
 
     let hitT = Infinity;
-    for (const wall of map.walls) {
+    for (const wall of solidRects(map)) {
       const t = segmentRectHit(x0, y0, x1, y1, wall, launcher.grenadeRadius);
       if (t !== null && t < hitT) hitT = t;
     }

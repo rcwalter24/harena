@@ -83,6 +83,7 @@ export function placeAtSpawn(state: GameState, p: PlayerState, spawn: SpawnPoint
   p.mineCooldown = 0;
   p.switchTimer = 0;
   p.respawnTimer = 0;
+  p.noiseTimer = 0;
   p.lastDamagerId = -1;
   p.lastDamageWeapon = null;
 }

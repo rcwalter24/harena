@@ -2,9 +2,6 @@
 
 <!-- GENERATED FILE: edit docs/BOT_API.template.md or src/engine/config.ts, then run `npm run docs`. -->
 
-> **Status: provisional.** Bushes and the end-of-match ranking are specified here but
-> still being implemented. Their numbers may still change.
-
 This document is everything you need to write a bot for **Harena**, a top-down 2D
 arena shooter where every player is a program. Read it fully. The exact numbers are
 in the tables, and your bot can also read them at runtime from `info.rules`.
@@ -59,7 +56,7 @@ export function decide(state) {
   Eliminated players rank below all survivors, and a later elimination ranks higher.
   Exact ties share a rank.
 - You see the whole map and everything on it. The only exception is enemies hiding in
-  **bushes** ([§5.11](#511-bushes-provisional)).
+  **bushes** ([§5.11](#511-bushes)).
 
 ---
 
@@ -203,7 +200,7 @@ Items are circles of radius 12. You pick one up when your centre is within
 Random items appear every 6 s, starting 3 s into the match, at random free spots. Spawning
 pauses while 6 spawned items are on the map. Spawn weights: ammo 30, shield 25, health 25, gun 12, life 8, launcher 6, mines 10.
 
-### 5.11 Bushes (provisional)
+### 5.11 Bushes
 - Bushes are rectangles in `info.map.bushes`. They block nothing: players, bullets, grenades and
   explosions pass through them.
 - A player whose **centre** is inside a bush is **hidden** from an enemy, unless:
@@ -643,9 +640,12 @@ Every value below is also available at runtime as `info.rules.<path>`, for examp
 
 Your bot receives the map in `info.map` and should work on any of them.
 
-| id | Name | Size | Walls | Spawns | Gun pads |
-|---|---|---|---|---|---|
-| `open` | Open Field | 1600 × 1000 | 7 | 8 | 2 |
+| id | Name | Size | Walls | Bushes | Spawns | Gun pads |
+|---|---|---|---|---|---|---|
+| `blocks` | Blockyard | 1600 × 1000 | 15 | 4 | 8 | 2 |
+| `corridors` | Corridors | 1400 × 1000 | 13 | 4 | 8 | 2 |
+| `duel` | Duel | 1000 × 700 | 3 | 2 | 8 | 2 |
+| `open` | Open Field | 1600 × 1000 | 7 | 4 | 8 | 2 |
 
 ---
 
@@ -803,12 +803,13 @@ function mineEscape(state, me) {
 
 // ---------- decision ----------
 
+// Nearest living enemy, preferring ones we can see (hidden ones only have a stale position).
 function nearestEnemy(state, me) {
   let best = null;
   let bestD = Infinity;
   for (const p of state.players) {
     if (p.id === me.id || !p.alive) continue;
-    const d = dist(p, me);
+    const d = dist(p, me) + (p.visible ? 0 : 400);
     if (d < bestD) {
       bestD = d;
       best = p;
@@ -894,8 +895,10 @@ export function decide(state) {
   const aim = Math.atan2(lead.y - me.y, lead.x - me.x);
   const onTarget = Math.abs(angleDiff(aim, me.facing)) < 0.08;
 
+  // Only shoot at hidden enemies we saw a moment ago; older positions are guesses.
+  const fresh = enemy.visible || enemy.seenAgo < 0.5;
   let attack = false;
-  if (me.weapon === weapon && onTarget) {
+  if (me.weapon === weapon && onTarget && fresh) {
     if (weapon === 'gun') {
       attack = d < rules.gun.range * 0.8 && clearShot(me, lead, rules.gun.bulletRadius);
     } else {

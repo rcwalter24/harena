@@ -1,7 +1,7 @@
 import { secondsToTicks } from '../config.ts';
 import { DEG, dcos, direction, length } from '../dmath.ts';
 import { lineOfSight, segmentCircleHit, segmentRectHit } from '../geometry.ts';
-import type { ActionInput, DamageSource, GameState, PlayerState } from '../types.ts';
+import { solidRects, type ActionInput, type DamageSource, type GameState, type PlayerState } from '../types.ts';
 
 /**
  * Apply damage to a target. Shield absorbs first. Players that are dead, already
@@ -17,6 +17,7 @@ export function applyDamage(
   target.hp -= hpDamage;
   const dealt = shieldDamage + hpDamage;
   target.lastDamagerId = attacker.id;
+  target.noiseTimer = secondsToTicks(state.config.bushes.noiseRevealTime, state.config);
   target.lastDamageWeapon = weapon;
   target.stats.damageTaken += dealt;
   if (attacker !== target) attacker.stats.damageDealt += dealt;
@@ -50,6 +51,7 @@ export function applyAttacks(state: GameState, actions: readonly ActionInput[]):
       if (p.knifeCooldown > 0) continue;
       p.knifeCooldown = secondsToTicks(config.knife.cooldown, config);
       p.invulnerableTimer = 0;
+      p.noiseTimer = secondsToTicks(config.bushes.noiseRevealTime, config);
       p.stats.knifeSwings++;
       const hitIds: number[] = [];
       for (const target of state.players) {
@@ -63,6 +65,7 @@ export function applyAttacks(state: GameState, actions: readonly ActionInput[]):
       if (p.gunCooldown > 0 || p.ammo <= 0 || !p.hasGun) continue;
       p.gunCooldown = secondsToTicks(config.gun.cooldown, config);
       p.invulnerableTimer = 0;
+      p.noiseTimer = secondsToTicks(config.bushes.noiseRevealTime, config);
       p.ammo--;
       p.stats.shotsFired++;
       const f = direction(p.facing);
@@ -81,6 +84,7 @@ export function applyAttacks(state: GameState, actions: readonly ActionInput[]):
       if (p.launcherCooldown > 0 || p.grenades <= 0 || !p.hasLauncher) continue;
       p.launcherCooldown = secondsToTicks(config.launcher.cooldown, config);
       p.invulnerableTimer = 0;
+      p.noiseTimer = secondsToTicks(config.bushes.noiseRevealTime, config);
       p.grenades--;
       p.stats.grenadesFired++;
       const f = direction(p.facing);
@@ -121,7 +125,7 @@ export function updateBullets(state: GameState): void {
     const y1 = y0 + (b.vy / config.gun.bulletSpeed) * stepLen;
 
     let wallT = Infinity;
-    for (const wall of map.walls) {
+    for (const wall of solidRects(map)) {
       const t = segmentRectHit(x0, y0, x1, y1, wall, config.gun.bulletRadius);
       if (t !== null && t < wallT) wallT = t;
     }

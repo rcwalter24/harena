@@ -1,5 +1,7 @@
 import type { ItemType } from '../engine/config.ts';
-import type { GameEvent, GameState, PlayerState } from '../engine/types.ts';
+import { bushAt } from '../engine/systems/visibility.ts';
+import type { GameEvent, GameState, MapData, PlayerState } from '../engine/types.ts';
+import { Rng } from '../engine/rng.ts';
 
 export const PLAYER_COLORS = ['#4fc3f7', '#ff7043', '#9ccc65', '#ba68c8', '#ffd54f', '#4db6ac', '#f06292', '#a1887f'];
 
@@ -70,6 +72,7 @@ export class Renderer {
   private offsetX = 0;
   private offsetY = 0;
   private effects: Effect[] = [];
+  private foliage: { map: MapData; blobs: { x: number; y: number; r: number; shade: number }[] } | null = null;
 
   constructor(canvas: HTMLCanvasElement) {
     this.canvas = canvas;
@@ -144,6 +147,7 @@ export class Renderer {
     ctx.scale(this.scale, this.scale);
 
     this.drawArena(state);
+    this.drawBushes(state);
     this.drawPads(state);
     this.drawItems(state);
     this.drawMines(state);
@@ -157,7 +161,12 @@ export class Renderer {
     });
     if (opts.debug) this.drawDebugUnder(state, positions);
     for (const p of state.players) {
-      if (p.alive) this.drawPlayer(state, p, positions[p.id], p.id === opts.focusId);
+      if (!p.alive) continue;
+      // Players hiding in a bush are drawn faded (spectators always see them).
+      const hidden = bushAt(state, p.x, p.y) >= 0 && p.noiseTimer === 0;
+      ctx.globalAlpha = hidden ? 0.45 : 1;
+      this.drawPlayer(state, p, positions[p.id], p.id === opts.focusId);
+      ctx.globalAlpha = 1;
     }
     this.drawEffects();
     if (opts.debug) this.drawDebugOver(state);
@@ -189,6 +198,37 @@ export class Renderer {
       ctx.fillRect(w.x, w.y, w.w, w.h);
       ctx.fillStyle = '#4b5366';
       ctx.fillRect(w.x, w.y, w.w, Math.min(4, w.h));
+    }
+  }
+
+  /** Leafy blobs, generated once per map from a fixed seed so they don't flicker. */
+  private drawBushes(state: GameState): void {
+    const { ctx } = this;
+    const bushes = state.map.bushes ?? [];
+    if (bushes.length === 0) return;
+    if (this.foliage?.map !== state.map) {
+      const rng = new Rng(`foliage:${state.map.id}`);
+      const blobs: { x: number; y: number; r: number; shade: number }[] = [];
+      for (const b of bushes) {
+        const count = Math.max(6, Math.round((b.w * b.h) / 700));
+        for (let i = 0; i < count; i++) {
+          const r = rng.range(9, 17);
+          blobs.push({ x: rng.range(b.x + r * 0.6, b.x + b.w - r * 0.6), y: rng.range(b.y + r * 0.6, b.y + b.h - r * 0.6), r, shade: rng.next() });
+        }
+      }
+      this.foliage = { map: state.map, blobs };
+    }
+    for (const b of bushes) {
+      ctx.fillStyle = 'rgba(46, 94, 52, 0.55)';
+      ctx.beginPath();
+      ctx.roundRect(b.x, b.y, b.w, b.h, 10);
+      ctx.fill();
+    }
+    for (const blob of this.foliage.blobs) {
+      ctx.fillStyle = `rgba(${60 + blob.shade * 30}, ${120 + blob.shade * 40}, ${62 + blob.shade * 20}, 0.55)`;
+      ctx.beginPath();
+      ctx.arc(blob.x, blob.y, blob.r, 0, Math.PI * 2);
+      ctx.fill();
     }
   }
 

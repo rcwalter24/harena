@@ -1,5 +1,6 @@
 import { DEFAULT_CONFIG, mergeConfig } from '../engine/config.ts';
 import { createGame } from '../engine/game.ts';
+import type { GameState } from '../engine/types.ts';
 import type { Controller } from '../match/controller.ts';
 import { DummyController } from '../match/dummies.ts';
 import { MatchRunner } from '../match/runner.ts';
@@ -180,12 +181,7 @@ export function mountMatch(app: HTMLElement, setup: MatchSetup, onExit: () => vo
       (events, s) => {
         renderer.addEvents(events, s);
         feed.add(events, s);
-        for (const e of events) {
-          if (e.type === 'matchEnd') {
-            banner.textContent = e.reason === 'timeLimit' ? 'Time limit reached' : 'Match over';
-            banner.classList.remove('hidden');
-          }
-        }
+        if (s.result && events.some((e) => e.type === 'matchEnd')) showResult(s);
       },
     );
     if (previous) {
@@ -198,6 +194,20 @@ export function mountMatch(app: HTMLElement, setup: MatchSetup, onExit: () => vo
       if (loop === current) current.start();
     });
     syncButtons();
+  }
+
+  function showResult(s: GameState): void {
+    const result = s.result!;
+    const winners = result.ranking.filter((r) => r.rank === 1).map((r) => s.players[r.playerId].name);
+    const title = result.reason === 'timeLimit' ? 'Time limit reached' : result.reason === 'allEliminated' ? 'Everyone is out' : 'Last one standing';
+    const headline = winners.length === 1 ? `🏆 ${winners[0]} wins` : `Draw: ${winners.join(', ')}`;
+    const rows = result.ranking.map((r) => {
+      const p = s.players[r.playerId];
+      const detail = p.eliminated ? 'eliminated' : `${p.lives} ♥ · ${Math.ceil(p.hp + p.shield)} hp+shield`;
+      return `<li><span class="rank">${r.rank}.</span><span class="dot" style="background:${playerColor(p.id)}"></span>${escapeHtml(p.name)} <span class="muted">${detail} · K ${p.stats.kills}</span></li>`;
+    }).join('');
+    banner.innerHTML = `<div class="banner-sub">${title}</div><div>${escapeHtml(headline)}</div><ol class="result-list">${rows}</ol>`;
+    banner.classList.remove('hidden');
   }
 
   function syncButtons(): void {

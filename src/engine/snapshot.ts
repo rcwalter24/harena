@@ -1,4 +1,5 @@
 import type { BotState, EventView, InitInfo, PlayerView } from './botApi.ts';
+import { isVisibleTo } from './systems/visibility.ts';
 import type { GameState, PlayerState } from './types.ts';
 
 /** Build the plain-data view of one player that bots see. */
@@ -79,6 +80,28 @@ export function buildBotState(state: GameState): Omit<BotState, 'self'> {
     explosions: state.explosions.map((e) => ({ ownerId: e.ownerId, source: e.source, x: e.x, y: e.y, radius: e.radius })),
     items: state.items.map((it) => ({ id: it.id, type: it.type, x: it.x, y: it.y })),
     events: eventViews(state),
+  };
+}
+
+/**
+ * The shared state as one player sees it: enemies hidden in bushes show their
+ * last-seen position with visible: false, and events that would give their
+ * position away (pickups) are removed.
+ */
+export function viewForPlayer(state: GameState, base: Omit<BotState, 'self'>, viewerId: number): Omit<BotState, 'self'> {
+  const viewer = state.players[viewerId];
+  const hidden = new Set<number>();
+  for (const target of state.players) if (!isVisibleTo(state, viewer, target)) hidden.add(target.id);
+  if (hidden.size === 0) return base;
+  const seen = state.lastSeen[viewerId];
+  return {
+    ...base,
+    players: base.players.map((v) => {
+      if (!hidden.has(v.id)) return v;
+      const s = seen[v.id];
+      return { ...v, visible: false, seenAgo: (state.tick - s.tick) / state.config.tickRate, x: s.x, y: s.y, vx: s.vx, vy: s.vy, facing: s.facing };
+    }),
+    events: base.events.filter((e) => !(e.type === 'pickup' && hidden.has(e.playerId))),
   };
 }
 

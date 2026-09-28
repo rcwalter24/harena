@@ -1,6 +1,6 @@
 import type { BotState } from '../engine/botApi.ts';
 import { sanitizeAction, unknownActionKeys } from '../engine/sanitize.ts';
-import { buildBotState, buildInitInfo } from '../engine/snapshot.ts';
+import { buildBotState, buildInitInfo, viewForPlayer } from '../engine/snapshot.ts';
 import { IDLE_ACTION, type ActionInput, type GameState } from '../engine/types.ts';
 import type { FromWorker, ToWorker } from '../sandbox/protocol.ts';
 import type { Controller } from './controller.ts';
@@ -286,7 +286,8 @@ export class BotController implements Controller {
         resolve(msg);
       };
     });
-    this.worker.post({ type: 'decide', tick, state: sharedSnapshot(state as GameState) });
+    const view = viewForPlayer(state as GameState, sharedSnapshot(state as GameState), playerId);
+    this.worker.post({ type: 'decide', tick, state: view });
 
     return reply.then((msg) => {
       if (msg === 'timeout') {

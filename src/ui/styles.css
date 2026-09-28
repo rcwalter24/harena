@@ -401,3 +401,9 @@ button.primary:disabled:hover { border-color: var(--accent); }
 
 .box button, .box select, .box input { font-size: 13px; }
 .bot-main button { padding: 3px 10px; }
+
+.banner-sub { font-size: 13px; font-weight: 400; color: var(--muted); margin-bottom: 4px; }
+.result-list { list-style: none; margin: 12px 0 0; padding: 0; font-size: 14px; font-weight: 400; }
+.result-list li { display: flex; align-items: center; gap: 8px; padding: 2px 0; }
+.result-list .rank { width: 22px; text-align: right; color: var(--muted); }
+.result-list .muted { font-size: 12px; }
