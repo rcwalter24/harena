@@ -57,12 +57,12 @@ interface BlastField {
   size: number;
 }
 
-/** World units per cell of a blast damage map. */
-const FIELD_CELL = 3;
-/** Finer cells for cloud shapes, whose edges along walls stay on screen for seconds. */
-const CLOUD_CELL = 2;
+/** World units per cell of a blast damage map or cloud shape (fine enough for smooth edges along walls). */
+const FIELD_CELL = 2;
 /** How far (world units) the soft edge of a cloud or a hole in it fades over. */
 const CLOUD_FEATHER = 14;
+/** How far the rim of a blast area fades over. */
+const BLAST_FEATHER = 6;
 
 type Canvas2D = OffscreenCanvas | HTMLCanvasElement;
 type Context2D = CanvasRenderingContext2D | OffscreenCanvasRenderingContext2D;
@@ -188,11 +188,12 @@ export class Renderer {
    */
   private shadedField(
     key: string, state: GameState, x: number, y: number, reach: number, color: [number, number, number],
-    makeShade: () => (px: number, py: number) => number, cell = FIELD_CELL,
+    makeShade: () => (px: number, py: number) => number,
   ): BlastField {
     const cached = this.fields.get(key);
     if (cached) return cached;
     const shade = makeShade();
+    const cell = FIELD_CELL;
     const n = Math.ceil((2 * reach) / cell);
     const x0 = x - (n * cell) / 2;
     const y0 = y - (n * cell) / 2;
@@ -225,13 +226,18 @@ export class Renderer {
    * take more damage (the engine's own rule, so walls cast shadows and it wraps around corners).
    */
   private blastField(state: GameState, source: 'grenade' | 'mine', x: number, y: number): BlastField {
-    const { centerDamage, blastRadius } = source === 'grenade' ? state.config.launcher : state.config.mines;
+    const { centerDamage, edgeDamage, blastRadius } = source === 'grenade' ? state.config.launcher : state.config.mines;
     const key = `${state.map.id}|${source}|${x}|${y}|${state.config.explosions.aroundCorners}`;
+    // Damage falls linearly to edgeDamage at the rim, so it also tells how far inside the rim a
+    // point is: the last few units fade out instead of ending in a hard, jagged edge.
+    const rimDamage = ((centerDamage - edgeDamage) * BLAST_FEATHER) / blastRadius;
     return this.shadedField(key, state, x, y, blastRadius + state.config.player.radius, [255, 64, 48], () => {
       const damageAt = blastDamageMap(state, source, x, y);
       return (px, py) => {
         const damage = damageAt(px, py);
-        return damage > 0 ? 0.12 + 0.78 * Math.min(1, damage / centerDamage) : 0;
+        if (damage <= 0) return 0;
+        const rim = rimDamage > 0 ? smoothstep((damage - edgeDamage + 1) / rimDamage) : 1;
+        return (0.12 + 0.78 * Math.min(1, damage / centerDamage)) * rim;
       };
     });
   }
@@ -241,7 +247,7 @@ export class Renderer {
     return this.shadedField(`${state.map.id}|hole|${h.x}|${h.y}|${h.radius}`, state, h.x, h.y, h.radius, [0, 0, 0], () => {
       const path = pathsAroundWallsFrom(h.x, h.y, state.map.walls, h.radius);
       return (px, py) => (path(px, py) === Infinity ? 0 : 1);
-    }, CLOUD_CELL);
+    });
   }
 
   /**
@@ -260,7 +266,7 @@ export class Renderer {
         if (d > c.radius) return 0;
         return (inner - (inner - outer) * (d / c.radius)) * smoothstep((c.radius - d) / CLOUD_FEATHER);
       };
-    }, CLOUD_CELL);
+    });
   }
 
   /** A scratch canvas at least width × height, cleared, with its context reset. */
