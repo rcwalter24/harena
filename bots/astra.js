@@ -1,1066 +1,1340 @@
-// sentinel.js
-// Harena bot — inertia-aware movement and short-horizon threat prediction.
-// No dependencies. No asynchronous code.
-
 export const meta = {
-  name: "Astra",
-  author: "Arena Bot",
+  name: 'Astra',
+  author: 'Astra',
 };
 
-let R, M, W;
-let DT, PR, TURN;
-let nodes, edges, route;
-let lastMove, targetId, aliveBefore;
-let orbitSign, orbitUntil;
-let decisionStart;
+let R, arena, walls, radius, dt;
+let nodes = [];
+let edges = [];
+let routeCache = null;
+
+let heldItem = -1;
+let previousAlive = false;
+let lastWeaponChange = -100;
+let lastRequestedWeapon = 'knife';
+let strafe = 1;
+let nextStrafe = 0;
 
 const TAU = Math.PI * 2;
-const clamp = (x, a, b) => Math.max(a, Math.min(b, x));
-const dist = (a, b) => Math.hypot(a.x - b.x, a.y - b.y);
+const EPS = 1e-6;
+
+const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
+const distance = (a, b) => Math.hypot(a.x - b.x, a.y - b.y);
 
 function unit(x, y) {
   const d = Math.hypot(x, y);
-  return d > 1e-9 ? { x: x / d, y: y / d } : { x: 0, y: 0 };
+  return d > 1e-9
+    ? { x: x / d, y: y / d }
+    : { x: 0, y: 0 };
 }
 
-function diff(a, b) {
-  let d = (a - b) % TAU;
-  if (d > Math.PI) d -= TAU;
-  if (d <= -Math.PI) d += TAU;
-  return d;
+function angleDiff(a, b) {
+  return Math.atan2(Math.sin(a - b), Math.cos(a - b));
 }
 
-function speedOf(weapon) {
-  if (weapon === "gun") return R.player.speedGun;
-  if (weapon === "launcher") return R.player.speedLauncher;
-  return R.player.speedKnife;
-}
+// ============================================================
+// Geometry
+// ============================================================
 
-// Entry fraction into a rectangle expanded by pad.
-function rectEntry(a, b, w, pad) {
-  let lo = 0, hi = 1;
-  const dx = b.x - a.x, dy = b.y - a.y;
+// Used for projectiles and line of sight, not player movement.
+function rectHit(a, b, w, pad = 0) {
+  let lo = 0;
+  let hi = 1;
 
-  if (Math.abs(dx) < 1e-10) {
-    if (a.x < w.x - pad || a.x > w.x + w.w + pad) return Infinity;
-  } else {
-    let p = (w.x - pad - a.x) / dx;
-    let q = (w.x + w.w + pad - a.x) / dx;
-    if (p > q) [p, q] = [q, p];
-    lo = Math.max(lo, p);
-    hi = Math.min(hi, q);
-    if (lo > hi) return Infinity;
-  }
+  for (let axis = 0; axis < 2; axis++) {
+    const p = axis ? a.y : a.x;
+    const d = axis ? b.y - a.y : b.x - a.x;
+    const mn = (axis ? w.y : w.x) - pad;
+    const mx = (axis ? w.y + w.h : w.x + w.w) + pad;
 
-  if (Math.abs(dy) < 1e-10) {
-    if (a.y < w.y - pad || a.y > w.y + w.h + pad) return Infinity;
-  } else {
-    let p = (w.y - pad - a.y) / dy;
-    let q = (w.y + w.h + pad - a.y) / dy;
-    if (p > q) [p, q] = [q, p];
-    lo = Math.max(lo, p);
-    hi = Math.min(hi, q);
-    if (lo > hi) return Infinity;
+    if (Math.abs(d) < 1e-10) {
+      if (p < mn || p > mx) return Infinity;
+    } else {
+      let t0 = (mn - p) / d;
+      let t1 = (mx - p) / d;
+
+      if (t0 > t1) [t0, t1] = [t1, t0];
+
+      lo = Math.max(lo, t0);
+      hi = Math.min(hi, t1);
+
+      if (lo > hi) return Infinity;
+    }
   }
 
   return lo;
 }
 
-function wallEntry(a, b, pad = 0) {
-  let t = Infinity;
-  for (const w of W) t = Math.min(t, rectEntry(a, b, w, pad));
-  return t;
-}
+function wallFraction(a, b, pad = 0) {
+  let fraction = Infinity;
 
-function clear(a, b, pad = 0) {
-  return wallEntry(a, b, pad) === Infinity;
-}
-
-function free(p, pad = PR) {
-  if (
-    p.x < pad || p.y < pad ||
-    p.x > M.width - pad || p.y > M.height - pad
-  ) return false;
-
-  for (const w of W) {
-    const x = clamp(p.x, w.x, w.x + w.w);
-    const y = clamp(p.y, w.y, w.y + w.h);
-    if (Math.hypot(p.x - x, p.y - y) < pad - 1e-6) return false;
+  for (const w of walls) {
+    fraction = Math.min(fraction, rectHit(a, b, w, pad));
   }
+
+  return fraction;
+}
+
+function shotClear(a, b, pad = 0) {
+  return wallFraction(a, b, pad) === Infinity;
+}
+
+function pointSegmentDistanceSq(px, py, ax, ay, bx, by) {
+  const dx = bx - ax;
+  const dy = by - ay;
+  const q = dx * dx + dy * dy;
+
+  const t = q > 1e-12
+    ? clamp(((px - ax) * dx + (py - ay) * dy) / q, 0, 1)
+    : 0;
+
+  const ex = px - ax - t * dx;
+  const ey = py - ay - t * dy;
+
+  return ex * ex + ey * ey;
+}
+
+function segmentDistance(p, a, b) {
+  return Math.sqrt(pointSegmentDistanceSq(
+    p.x, p.y, a.x, a.y, b.x, b.y
+  ));
+}
+
+// Exact squared distance from a point to the solid rectangle.
+function pointRectDistanceSq(p, w) {
+  const dx = Math.max(w.x - p.x, 0, p.x - w.x - w.w);
+  const dy = Math.max(w.y - p.y, 0, p.y - w.y - w.h);
+
+  return dx * dx + dy * dy;
+}
+
+// Positive outside, zero on the surface, negative inside.
+// For a circle centre, penetration depth is radius - clearance.
+function rectClearance(p, w) {
+  const q = pointRectDistanceSq(p, w);
+
+  if (q > 0) return Math.sqrt(q);
+
+  return -Math.min(
+    p.x - w.x,
+    w.x + w.w - p.x,
+    p.y - w.y,
+    w.y + w.h - p.y
+  );
+}
+
+// Exact minimum squared distance between a segment and rectangle.
+// If disjoint, the closest pair includes a segment endpoint
+// or a rectangle corner.
+function segmentRectDistanceSq(a, b, w) {
+  if (rectHit(a, b, w, 0) !== Infinity) return 0;
+
+  let best = Math.min(
+    pointRectDistanceSq(a, w),
+    pointRectDistanceSq(b, w)
+  );
+
+  const x0 = w.x;
+  const x1 = w.x + w.w;
+  const y0 = w.y;
+  const y1 = w.y + w.h;
+
+  best = Math.min(
+    best,
+    pointSegmentDistanceSq(x0, y0, a.x, a.y, b.x, b.y),
+    pointSegmentDistanceSq(x1, y0, a.x, a.y, b.x, b.y),
+    pointSegmentDistanceSq(x0, y1, a.x, a.y, b.x, b.y),
+    pointSegmentDistanceSq(x1, y1, a.x, a.y, b.x, b.y)
+  );
+
+  return best;
+}
+
+// Exceptional recovery for a centre inside a rectangle.
+//
+// Signed distance inside the rectangle is the maximum of four
+// affine face clearances. Permit a direction only when an active
+// nearest face does not become deeper.
+function canExitRectangle(a, b, w) {
+  const values = [
+    w.x - a.x,
+    a.x - w.x - w.w,
+    w.y - a.y,
+    a.y - w.y - w.h,
+  ];
+
+  const dx = b.x - a.x;
+  const dy = b.y - a.y;
+  const slopes = [-dx, dx, -dy, dy];
+  const active = Math.max(...values);
+
+  for (let i = 0; i < 4; i++) {
+    if (values[i] >= active - EPS && slopes[i] >= -EPS)
+      return true;
+  }
+
+  return false;
+}
+
+// Exact circle-versus-wall sweep, with overlap recovery.
+//
+// If currently clear: the whole segment must remain >= radius away.
+// If currently overlapping: the segment may preserve or reduce
+// penetration, but may never increase it.
+function circleWallMoveAllowed(a, b, w, r) {
+  // Broad phase.
+  if (
+    Math.max(a.x, b.x) < w.x - r ||
+    Math.min(a.x, b.x) > w.x + w.w + r ||
+    Math.max(a.y, b.y) < w.y - r ||
+    Math.min(a.y, b.y) > w.y + w.h + r
+  ) {
+    return true;
+  }
+
+  const start = rectClearance(a, w);
+
+  if (start <= 0) {
+    return canExitRectangle(a, b, w);
+  }
+
+  const required = Math.max(0, Math.min(r, start) - EPS);
+  return segmentRectDistanceSq(a, b, w) >= required * required;
+}
+
+function borderMoveAllowed(a, b, r) {
+  // Existing border penetration may stay equal or decrease.
+  return (
+    b.x >= Math.min(a.x, r) - EPS &&
+    b.y >= Math.min(a.y, r) - EPS &&
+    b.x <= Math.max(a.x, arena.width - r) + EPS &&
+    b.y <= Math.max(a.y, arena.height - r) + EPS
+  );
+}
+
+// Shared by navigation and movement prediction.
+function walkClear(a, b, r = radius) {
+  if (!borderMoveAllowed(a, b, r)) return false;
+
+  for (const w of walls) {
+    if (!circleWallMoveAllowed(a, b, w, r)) return false;
+  }
+
   return true;
 }
 
-function walkable(a, b) {
-  return free(b, PR + 0.1) && clear(a, b, PR - 0.05);
+function free(p, r = radius) {
+  if (
+    p.x < r - EPS ||
+    p.y < r - EPS ||
+    p.x > arena.width - r + EPS ||
+    p.y > arena.height - r + EPS
+  ) {
+    return false;
+  }
+
+  const minSq = Math.max(0, r - EPS) ** 2;
+
+  for (const w of walls) {
+    if (pointRectDistanceSq(p, w) < minSq) return false;
+  }
+
+  return true;
 }
 
-// Approximate circle-wall resolution.
-// The actual engine also resolves collisions between players.
-function resolvePosition(x, y) {
-  x = clamp(x, PR, M.width - PR);
-  y = clamp(y, PR, M.height - PR);
+// ============================================================
+// Initialization and navigation
+// ============================================================
 
-  for (let pass = 0; pass < 2; pass++) {
-    for (const w of W) {
-      const nx = clamp(x, w.x, w.x + w.w);
-      const ny = clamp(y, w.y, w.y + w.h);
-      const dx = x - nx, dy = y - ny;
-      const d = Math.hypot(dx, dy);
+export function init(info) {
+  R = info.rules;
+  arena = info.map;
+  walls = arena.walls;
+  radius = R.player.radius;
+  dt = 1 / R.tickRate;
 
-      if (d >= PR) continue;
+  nodes = [];
+  edges = [];
+  routeCache = null;
+  heldItem = -1;
+  previousAlive = false;
+  lastWeaponChange = -100;
+  lastRequestedWeapon = 'knife';
+  strafe = info.selfId % 2 ? 1 : -1;
+  nextStrafe = 0;
 
-      if (d > 1e-8) {
-        x += dx * (PR - d) / d;
-        y += dy * (PR - d) / d;
-      } else {
-        const sides = [
-          [Math.abs(x - (w.x - PR)), w.x - PR, y],
-          [Math.abs(x - (w.x + w.w + PR)), w.x + w.w + PR, y],
-          [Math.abs(y - (w.y - PR)), x, w.y - PR],
-          [Math.abs(y - (w.y + w.h + PR)), x, w.y + w.h + PR],
-        ];
-        sides.sort((a, b) => a[0] - b[0]);
-        x = sides[0][1];
-        y = sides[0][2];
+  const margin = radius + 4;
+
+  for (const w of walls) {
+    for (const x of [w.x - margin, w.x + w.w + margin]) {
+      for (const y of [w.y - margin, w.y + w.h + margin]) {
+        const p = { x, y };
+
+        if (free(p) && !nodes.some(n => distance(n, p) < 1))
+          nodes.push(p);
       }
     }
-    x = clamp(x, PR, M.width - PR);
-    y = clamp(y, PR, M.height - PR);
   }
 
-  return { x, y };
+  edges = nodes.map(() => []);
+
+  for (let i = 0; i < nodes.length; i++) {
+    for (let j = 0; j < i; j++) {
+      if (walkClear(nodes[i], nodes[j])) {
+        const d = distance(nodes[i], nodes[j]);
+        edges[i].push([j, d]);
+        edges[j].push([i, d]);
+      }
+    }
+  }
 }
 
-// One true tick of requested-velocity acceleration.
-// Acceleration is limited by vector magnitude, not separately per axis.
-function motionTick(q, command, weapon) {
-  const speed = speedOf(weapon);
-  const length = Math.hypot(command.x, command.y);
-  const scale = length > 1 ? 1 / length : 1;
-  const desiredVX = command.x * scale * speed;
-  const desiredVY = command.y * scale * speed;
-  const accelTime = R.player.accelTime ?? 0.3;
+function recoveryPoint(me, goal) {
+  let best = me;
+  let bestScore = -Infinity;
 
-  let vx = desiredVX, vy = desiredVY;
+  for (const step of [16, 40, 72]) {
+    for (let i = 0; i < 24; i++) {
+      const a = i * TAU / 24;
 
-  if (accelTime > 0) {
-    const dx = desiredVX - q.vx;
-    const dy = desiredVY - q.vy;
-    const delta = Math.hypot(dx, dy);
-    const maxDelta = speed / accelTime * DT;
-    const fraction = delta > 1e-9 ? Math.min(1, maxDelta / delta) : 0;
-    vx = q.vx + dx * fraction;
-    vy = q.vy + dy * fraction;
+      const p = {
+        x: me.x + Math.cos(a) * step,
+        y: me.y + Math.sin(a) * step,
+      };
+
+      if (!walkClear(me, p)) continue;
+
+      let clearance = Math.min(
+        p.x,
+        p.y,
+        arena.width - p.x,
+        arena.height - p.y
+      );
+
+      for (const w of walls)
+        clearance = Math.min(clearance, rectClearance(p, w));
+
+      const score =
+        Math.min(clearance, radius + 15) * 4 -
+        distance(p, goal) * 0.1;
+
+      if (score > bestScore) {
+        bestScore = score;
+        best = p;
+      }
+    }
   }
 
-  const p = resolvePosition(q.x + vx * DT, q.y + vy * DT);
+  return best;
+}
 
-  return {
-    x: p.x,
-    y: p.y,
-    vx: (p.x - q.x) / DT,
-    vy: (p.y - q.y) / DT,
-  };
+function waypoint(me, goal, tick) {
+  if (walkClear(me, goal)) return goal;
+
+  if (
+    !routeCache ||
+    distance(routeCache.goal, goal) > 25 ||
+    tick - routeCache.tick >= 12
+  ) {
+    const n = nodes.length;
+    const costs = new Array(n).fill(Infinity);
+    const used = new Array(n).fill(false);
+
+    for (let i = 0; i < n; i++) {
+      if (walkClear(nodes[i], goal))
+        costs[i] = distance(nodes[i], goal);
+    }
+
+    for (let k = 0; k < n; k++) {
+      let best = -1;
+
+      for (let i = 0; i < n; i++) {
+        if (
+          !used[i] &&
+          Number.isFinite(costs[i]) &&
+          (best < 0 || costs[i] < costs[best])
+        ) {
+          best = i;
+        }
+      }
+
+      if (best < 0) break;
+
+      used[best] = true;
+
+      for (const [j, d] of edges[best])
+        costs[j] = Math.min(costs[j], costs[best] + d);
+    }
+
+    routeCache = {
+      goal: { x: goal.x, y: goal.y },
+      tick,
+      costs,
+    };
+  }
+
+  let best = null;
+  let bestCost = Infinity;
+
+  for (let i = 0; i < nodes.length; i++) {
+    const cost = distance(me, nodes[i]) + routeCache.costs[i];
+
+    if (cost < bestCost && walkClear(me, nodes[i])) {
+      bestCost = cost;
+      best = nodes[i];
+    }
+  }
+
+  return best || recoveryPoint(me, goal);
 }
 
 function zoneRadius(z, t) {
   if (!z.damagePerSecond) return Infinity;
 
-  if (z.collapseStartsIn !== null && t >= z.collapseStartsIn) {
+  if (z.collapseStartsIn != null && t >= z.collapseStartsIn) {
     const duration = z.collapseEndsIn - z.collapseStartsIn;
-    const from = z.collapseStartsIn > 0 ? z.finalRadius : z.radius;
+    const start = z.collapseStartsIn > 0 ? z.finalRadius : z.radius;
+
     if (duration <= 0 || t >= z.collapseEndsIn) return 0;
-    return from * (1 - (t - z.collapseStartsIn) / duration);
+
+    return start * (1 - (t - z.collapseStartsIn) / duration);
   }
 
   const duration = z.shrinkEndsIn - z.shrinkStartsIn;
+
   if (duration <= 0) return z.radius;
-  const fraction = clamp((t - z.shrinkStartsIn) / duration, 0, 1);
-  return z.radius + (z.finalRadius - z.radius) * fraction;
+
+  return z.radius - (z.radius - z.finalRadius) *
+    clamp((t - z.shrinkStartsIn) / duration, 0, 1);
 }
 
-// Choose a reachable-looking free destination if the requested point is solid.
-function freeGoal(goal) {
-  const p = {
-    x: clamp(goal.x, PR + 1, M.width - PR - 1),
-    y: clamp(goal.y, PR + 1, M.height - PR - 1),
-  };
-  if (free(p, PR + 0.1)) return p;
+function speedFor(weapon) {
+  const key =
+    weapon === 'knife' ? 'speedKnife' :
+    weapon === 'launcher' ? 'speedLauncher' :
+    weapon === 'laser' ? 'speedLaser' : 'speedGun';
 
-  let best = null, cost = Infinity;
-
-  for (let r = 24; r <= 192; r += 24) {
-    for (let i = 0; i < 16; i++) {
-      const a = i * TAU / 16;
-      const q = { x: p.x + Math.cos(a) * r, y: p.y + Math.sin(a) * r };
-      if (free(q, PR + 0.1)) return q;
-    }
-  }
-
-  for (const n of nodes) {
-    const d = dist(n, p);
-    if (d < cost) {
-      cost = d;
-      best = n;
-    }
-  }
-
-  return best || p;
+  return R.player[key];
 }
 
-export function init(info) {
-  R = info.rules;
-  M = info.map;
-  W = M.walls;
-  DT = 1 / R.tickRate;
-  PR = R.player.radius;
-  TURN = R.player.turnRateDegrees * Math.PI / 180 * DT;
+// ============================================================
+// Movement prediction
+// ============================================================
 
-  nodes = [];
-  route = null;
-  lastMove = { x: 0, y: 0 };
-  targetId = null;
-  aliveBefore = false;
-  orbitSign = info.selfId % 2 ? -1 : 1;
-  orbitUntil = 0;
+// Move along a displacement as far as allowed by the circle sweep.
+function clippedMove(p, dx, dy) {
+  const end = { x: p.x + dx, y: p.y + dy };
 
-  function add(p) {
-    if (!free(p, PR + 0.1)) return;
-    if (!nodes.some(n => dist(n, p) < 3)) nodes.push(p);
+  if (walkClear(p, end)) return end;
+
+  let lo = 0;
+  let hi = 1;
+
+  for (let i = 0; i < 9; i++) {
+    const mid = (lo + hi) * 0.5;
+    const q = { x: p.x + dx * mid, y: p.y + dy * mid };
+
+    if (walkClear(p, q)) lo = mid;
+    else hi = mid;
   }
 
-  const margin = PR + 3;
-  for (const w of W) {
-    add({ x: w.x - margin, y: w.y - margin });
-    add({ x: w.x + w.w + margin, y: w.y - margin });
-    add({ x: w.x - margin, y: w.y + w.h + margin });
-    add({ x: w.x + w.w + margin, y: w.y + w.h + margin });
-  }
-
-  for (const p of M.gunSpawns) add({ x: p.x, y: p.y });
-  for (const p of M.spawns) add({ x: p.x, y: p.y });
-  add({ x: M.width / 2, y: M.height / 2 });
-
-  edges = nodes.map(() => []);
-  for (let i = 0; i < nodes.length; i++) {
-    for (let j = i + 1; j < nodes.length; j++) {
-      if (!walkable(nodes[i], nodes[j])) continue;
-      const d = dist(nodes[i], nodes[j]);
-      edges[i].push([j, d]);
-      edges[j].push([i, d]);
-    }
-  }
+  return { x: p.x + dx * lo, y: p.y + dy * lo };
 }
 
-// Cached reverse Dijkstra over wall-corner visibility graph.
-function waypointTo(me, rawGoal, tick) {
-  const goal = freeGoal(rawGoal);
-  if (walkable(me, goal)) return goal;
+// First try the actual diagonal movement.
+// On collision, approach contact and then try axis sliding.
+// Every accepted subsegment passes the same circle sweep.
+function moveWithSliding(p, dx, dy) {
+  const end = { x: p.x + dx, y: p.y + dy };
 
-  if (
-    !route ||
-    tick - route.tick > 12 ||
-    dist(route.goal, goal) > 28
-  ) {
-    const costs = nodes.map(n => walkable(n, goal) ? dist(n, goal) : Infinity);
-    const used = new Uint8Array(nodes.length);
+  if (walkClear(p, end)) return end;
 
-    for (let k = 0; k < nodes.length; k++) {
-      let selected = -1, best = Infinity;
-      for (let i = 0; i < nodes.length; i++) {
-        if (!used[i] && costs[i] < best) {
-          best = costs[i];
-          selected = i;
-        }
-      }
-      if (selected < 0) break;
-      used[selected] = 1;
+  const contact = clippedMove(p, dx, dy);
+  const rx = end.x - contact.x;
+  const ry = end.y - contact.y;
 
-      for (const [j, length] of edges[selected]) {
-        costs[j] = Math.min(costs[j], best + length);
-      }
-    }
-    route = { goal, tick, costs };
-  }
+  const xFirst = clippedMove(contact, rx, 0);
+  const xy = clippedMove(xFirst, 0, ry);
 
-  let best = Infinity, point = null;
+  const yFirst = clippedMove(contact, 0, ry);
+  const yx = clippedMove(yFirst, rx, 0);
 
-  for (let i = 0; i < nodes.length; i++) {
-    const d = dist(me, nodes[i]);
-    if (d < 3 || !Number.isFinite(route.costs[i])) continue;
-    const cost = d + route.costs[i];
-    if (cost < best && walkable(me, nodes[i])) {
-      best = cost;
-      point = nodes[i];
-    }
-  }
+  const scoreXY = (xy.x - p.x) * dx + (xy.y - p.y) * dy;
+  const scoreYX = (yx.x - p.x) * dx + (yx.y - p.y) * dy;
 
-  if (point) return point;
-
-  // Local escape when wall contact prevents connection to the graph.
-  let escape = goal, escapeCost = Infinity;
-  for (let i = 0; i < 16; i++) {
-    const a = i * TAU / 16;
-    const p = { x: me.x + Math.cos(a) * 36, y: me.y + Math.sin(a) * 36 };
-    if (!free(p, PR + 1)) continue;
-
-    let valid = true;
-    for (let k = 1; k <= 6; k++) {
-      if (!free({
-        x: me.x + (p.x - me.x) * k / 6,
-        y: me.y + (p.y - me.y) * k / 6,
-      }, PR - 0.1)) {
-        valid = false;
-        break;
-      }
-    }
-
-    if (!valid) continue;
-    let cost = dist(p, goal);
-    if (walkable(p, goal)) cost -= 100;
-    if (cost < escapeCost) {
-      escapeCost = cost;
-      escape = p;
-    }
-  }
-
-  return escape;
+  return scoreXY >= scoreYX ? xy : yx;
 }
 
-// Enemy intent is unknown: predict continued velocity, clipping at walls.
-// Inertia makes this a useful short-term model, not a guaranteed trajectory.
-function predict(p, seconds) {
-  const t = Math.max(0, seconds + (p.visible ? 0 : Math.min(p.seenAgo, 0.2)));
-  const q = {
-    x: clamp(p.x + p.vx * t, PR, M.width - PR),
-    y: clamp(p.y + p.vy * t, PR, M.height - PR),
-  };
+function advance(p, command, topSpeed, h) {
+  const desiredVX = command.x * topSpeed;
+  const desiredVY = command.y * topSpeed;
 
-  const hit = wallEntry(p, q, PR - 0.1);
-  if (hit === Infinity) return q;
+  const dx = desiredVX - p.vx;
+  const dy = desiredVY - p.vy;
+  const delta = Math.hypot(dx, dy);
 
-  const f = Math.max(0, hit - 0.002);
+  const maxDelta = R.player.accelTime > 0
+    ? topSpeed * h / R.player.accelTime
+    : Infinity;
+
+  const k = delta > 0 ? Math.min(1, maxDelta / delta) : 0;
+
+  const vx = p.vx + dx * k;
+  const vy = p.vy + dy * k;
+
+  const q = moveWithSliding(p, vx * h, vy * h);
+
   return {
-    x: p.x + (q.x - p.x) * f,
-    y: p.y + (q.y - p.y) * f,
+    x: q.x,
+    y: q.y,
+    vx: (q.x - p.x) / h,
+    vy: (q.y - p.y) / h,
   };
 }
 
-function selectTarget(s) {
-  const me = s.self;
-  let selected = null, best = -Infinity;
-
-  for (const p of s.players) {
-    if (p.id === me.id || !p.alive) continue;
-    if (!p.visible && p.seenAgo > 0.2) continue;
-
-    const d = dist(me, p);
-    let score = 250 - d * 0.42;
-    if (clear(me, p, R.gun.bulletRadius)) score += 90;
-    score += Math.max(0, 100 - p.hp - p.shield) * 0.7;
-    if (p.id === targetId) score += 28;
-    if (d < 110) score += 100;
-    if (!p.visible) score -= 100;
-    if (p.invulnerable > d / R.gun.bulletSpeed) score -= 160;
-
-    if (score > best) {
-      best = score;
-      selected = p;
-    }
-  }
-
-  targetId = selected ? selected.id : null;
-  return selected;
+function predictPlayer(p, t) {
+  return moveWithSliding(p, p.vx * t, p.vy * t);
 }
 
-function itemValue(item, p) {
+// ============================================================
+// Items, targets and weapons
+// ============================================================
+
+function itemValue(item, me) {
   switch (item.type) {
-    case "life":
-      return p.lives < R.player.maxLives ? (p.lives <= 2 ? 350 : 250) : 0;
-    case "gun":
-      return !p.hasGun || p.ammo.gun === 0
-        ? 310
-        : p.ammo.gun < R.gun.maxAmmo
-          ? 30 + 120 * (1 - p.ammo.gun / R.gun.maxAmmo) : 0;
-    case "ammo":
-      return p.hasGun && p.ammo.gun < R.gun.maxAmmo
-        ? 20 + 140 * (1 - p.ammo.gun / R.gun.maxAmmo) : 0;
-    case "health":
-      return Math.max(0, Math.min(R.items.healthAmount, R.player.maxHp - p.hp))
-        * (p.hp < 45 ? 4.5 : 2.5);
-    case "shield":
-      return Math.max(0, Math.min(R.items.shieldAmount, R.player.maxShield - p.shield))
-        * 2.2;
-    case "launcher":
-      return !p.hasLauncher ? 100 : p.ammo.launcher < R.launcher.maxAmmo ? 50 : 0;
-    case "mines":
-      return p.mines < R.mines.maxCarry ? 15 : 0;
+    case 'life':
+      return me.lives < R.player.maxLives ? 260 : 0;
+
+    case 'health':
+      return me.hp < R.player.maxHp
+        ? Math.min(R.items.healthAmount, R.player.maxHp - me.hp) *
+          (me.hp < 45 ? 5 : 2.3)
+        : 0;
+
+    case 'shield':
+      return Math.max(0,
+        Math.min(R.items.shieldAmount, R.player.maxShield - me.shield) * 2
+      );
+
+    case 'gun':
+      return !me.hasGun || me.ammo.gun === 0 ? 225 :
+        me.ammo.gun < R.gun.maxAmmo
+          ? (me.ammo.gun < 10 ? 105 : 48) : 0;
+
+    case 'ammo':
+      return me.hasGun && me.ammo.gun < R.gun.maxAmmo
+        ? (me.ammo.gun < 8 ? 120 : 48) : 0;
+
+    case 'launcher':
+      return !me.hasLauncher || me.ammo.launcher < R.launcher.maxAmmo
+        ? (me.ammo.launcher === 0 ? 135 : 75) : 0;
+
+    case 'laser':
+      return !me.hasLaser || me.ammo.laser < R.laser.maxAmmo
+        ? (!me.ammo.gun && !me.ammo.launcher ? 140 : 65) : 0;
+
+    case 'gas':
+      return me.gasGrenades < R.gas.maxCarry ? 35 : 0;
+
+    case 'smoke':
+      return me.smokeGrenades < R.smoke.maxCarry ? 28 : 0;
+
+    case 'mines':
+      return me.mines < R.mines.maxCarry ? 24 : 0;
+
     default:
       return 0;
   }
 }
 
-function selectLoot(s) {
-  const me = s.self;
-  let selected = null, best = 0;
+function chooseItem(state, enemies) {
+  const me = state.self;
+  let best = null;
+  let bestScore = 0.07;
 
-  for (const item of s.items) {
-    const value = itemValue(item, me);
+  for (const item of state.items) {
+    let value = itemValue(item, me);
+
     if (value <= 0) continue;
 
-    const d = dist(me, item);
-    const travel = d * (walkable(me, item) ? 1 : 1.55) / speedOf(me.weapon) + 0.15;
+    const d = distance(me, item);
+    const eta = d / Math.max(120, speedFor(me.weapon)) + 0.6;
 
     if (
-      s.zone.damagePerSecond &&
-      dist(item, s.zone) > zoneRadius(s.zone, travel + 1.5) - 12
+      state.zone.damagePerSecond &&
+      distance(item, state.zone) > zoneRadius(state.zone, eta + 1) - 12
     ) continue;
 
-    let score = value / (0.85 + travel);
+    const routeLength = d + (walkClear(me, item) ? 0 : 180);
 
-    for (const p of s.players) {
-      if (p.id === me.id || !p.alive || !p.visible) continue;
-      const pd = dist(p, item);
+    for (const e of enemies) {
+      if (!e.visible) continue;
 
-      if (pd + 50 < d && itemValue(item, p) > 0 && walkable(p, item)) {
-        score *= 0.55;
-      }
+      const ed = distance(e, item);
 
-      if (pd < 160 && me.hp + me.shield < 65 && clear(p, item)) {
-        score *= 0.65;
-      }
+      if (ed + 65 < d && ed < 230) value *= 0.55;
+      if (ed < 110 && me.hp + me.shield < 70) value *= 0.5;
     }
 
-    if (score > best) {
-      best = score;
-      selected = item;
+    const score = value / (routeLength + 130) *
+      (item.id === heldItem ? 1.18 : 1);
+
+    if (score > bestScore) {
+      bestScore = score;
+      best = item;
     }
   }
 
-  return selected ? { item: selected, score: best } : null;
+  heldItem = best ? best.id : -1;
+  return best;
 }
 
-function selectWeapon(me, target) {
-  const d = target ? dist(me, target) : Infinity;
-  const reach = 2 * PR + R.knife.reach;
+function chooseTarget(state, enemies) {
+  let target = null;
+  let best = Infinity;
 
-  // Avoid switching repeatedly between a loaded gun and knife.
-  if (
-    target && d < reach + (me.weapon === "knife" ? 16 : -8) &&
-    (
-      me.weapon === "knife" ||
-      me.weapon === "launcher" ||
-      (
-        target.hp + target.shield <= R.knife.damage &&
-        me.cooldowns.gun > R.player.switchTime
-      )
-    )
-  ) return "knife";
+  for (const e of enemies) {
+    if (!e.visible && e.seenAgo > 1.2) continue;
 
-  if (me.hasGun && me.ammo.gun > 0) return "gun";
+    const score =
+      distance(state.self, e) +
+      (shotClear(state.self, e, 3) ? 0 : 240) +
+      (e.visible ? 0 : 220) +
+      (e.invulnerable > 0 ? 350 : 0) +
+      0.6 * (e.hp + e.shield);
 
-  const launcherMargin = me.weapon === "launcher" ? 45 : 80;
-  if (
-    me.hasLauncher && me.ammo.launcher > 0 &&
-    d > R.launcher.blastRadius + PR + launcherMargin
-  ) return "launcher";
-
-  return "knife";
-}
-
-// Earliest contact under constant relative velocity.
-function contactTime(rx, ry, vx, vy, radius, limit) {
-  const c = rx * rx + ry * ry - radius * radius;
-  if (c <= 0) return 0;
-
-  const a = vx * vx + vy * vy;
-  if (a < 1e-9) return Infinity;
-
-  const b = 2 * (rx * vx + ry * vy);
-  const disc = b * b - 4 * a * c;
-  if (disc < 0) return Infinity;
-
-  const t = (-b - Math.sqrt(disc)) / (2 * a);
-  return t >= 0 && t <= limit ? t : Infinity;
-}
-
-// Includes solid map border.
-function projectileLife(p, maxTime) {
-  const end = { x: p.x + p.vx * maxTime, y: p.y + p.vy * maxTime };
-  const hit = wallEntry(p, end, p.radius);
-  let t = hit === Infinity ? maxTime : hit * maxTime;
-
-  if (p.vx > 0) t = Math.min(t, (M.width - p.radius - p.x) / p.vx);
-  if (p.vx < 0) t = Math.min(t, (p.radius - p.x) / p.vx);
-  if (p.vy > 0) t = Math.min(t, (M.height - p.radius - p.y) / p.vy);
-  if (p.vy < 0) t = Math.min(t, (p.radius - p.y) / p.vy);
-
-  return Math.max(0, t);
-}
-
-function buildThreats(s, horizon) {
-  const me = s.self;
-
-  const bullets = s.bullets
-    .filter(b =>
-      b.ownerId !== me.id &&
-      dist(b, me) < Math.hypot(b.vx, b.vy) * horizon + 180
-    )
-    .map(b => ({ ...b, until: projectileLife(b, horizon) }));
-
-  const grenades = [];
-  const blasts = [];
-
-  for (const g of s.grenades) {
-    const speed = Math.hypot(g.vx, g.vy);
-    if (speed < 1e-9) continue;
-
-    let until = projectileLife(g, g.remainingRange / speed);
-
-    for (const p of s.players) {
-      if (!p.alive || !p.visible || p.id === me.id || p.id === g.ownerId) continue;
-      until = Math.min(until, contactTime(
-        g.x - p.x, g.y - p.y,
-        g.vx - p.vx, g.vy - p.vy,
-        PR + g.radius, until
-      ));
+    if (score < best) {
+      best = score;
+      target = e;
     }
+  }
 
-    grenades.push({ ...g, until });
+  return target;
+}
 
-    if (until <= 2.5) {
-      blasts.push({
-        x: g.x + g.vx * until,
-        y: g.y + g.vy * until,
-        time: until,
-        radius: R.launcher.blastRadius,
-        damage: R.launcher.centerDamage,
+function chooseWeapon(state, target) {
+  const me = state.self;
+  const d = target ? distance(me, target) : Infinity;
+  const reach = 2 * radius + R.knife.reach;
+
+  let weapon;
+
+  if (me.laserCharge > 0 && d > reach + 18) {
+    weapon = 'laser';
+  } else if (
+    target && d < reach + 8 &&
+    (
+      me.weapon === 'knife' ||
+      !me.ammo.gun ||
+      target.hp + target.shield <= R.knife.damage
+    )
+  ) {
+    weapon = 'knife';
+  } else if (me.hasGun && me.ammo.gun > 0) {
+    weapon = 'gun';
+  } else if (
+    me.hasLauncher && me.ammo.launcher > 0 &&
+    d > R.launcher.blastRadius + radius + 55
+  ) {
+    weapon = 'launcher';
+  } else if (me.hasLaser && me.ammo.laser > 0 && d > 130) {
+    weapon = 'laser';
+  } else {
+    weapon = 'knife';
+  }
+
+  const usable = me.weapon === 'knife' || me.ammo[me.weapon] > 0;
+  const unsafeLauncher = me.weapon === 'launcher' &&
+    d < R.launcher.blastRadius + radius + 40;
+
+  if (
+    weapon !== me.weapon &&
+    usable &&
+    !unsafeLauncher &&
+    state.time - lastWeaponChange < 0.65
+  ) {
+    weapon = me.weapon;
+  }
+
+  if (weapon !== lastRequestedWeapon) {
+    lastRequestedWeapon = weapon;
+    lastWeaponChange = state.time;
+  }
+
+  return weapon;
+}
+
+// ============================================================
+// Threat preparation
+// ============================================================
+
+function threats(state) {
+  const result = [];
+
+  for (const explosive of [false, true]) {
+    const list = explosive ? state.grenades : state.bullets;
+
+    for (const p of list) {
+      if (!explosive && p.ownerId === state.self.id) continue;
+      if (distance(p, state.self) > 700) continue;
+
+      const speed = Math.hypot(p.vx, p.vy);
+      if (speed < 1) continue;
+
+      const travel = explosive ? p.remainingRange : R.gun.range;
+      let life = travel / speed;
+
+      const end = {
+        x: p.x + p.vx * life,
+        y: p.y + p.vy * life,
+      };
+
+      const hit = wallFraction(p, end, p.radius);
+      if (hit !== Infinity) life *= hit;
+
+      if (p.vx > 0)
+        life = Math.min(life, (arena.width - p.radius - p.x) / p.vx);
+      if (p.vx < 0)
+        life = Math.min(life, (p.radius - p.x) / p.vx);
+      if (p.vy > 0)
+        life = Math.min(life, (arena.height - p.radius - p.y) / p.vy);
+      if (p.vy < 0)
+        life = Math.min(life, (p.radius - p.y) / p.vy);
+
+      life = Math.max(0, life);
+
+      result.push({
+        ...p,
+        explosive,
+        life,
+        end: {
+          x: p.x + p.vx * life,
+          y: p.y + p.vy * life,
+        },
       });
     }
   }
 
-  const fuse = s.mines.map(m => Math.max(0, m.fuse));
-
-  for (let i = 0; i < s.mines.length; i++) {
-    for (const b of blasts) {
-      if (dist(s.mines[i], b) <= b.radius) {
-        fuse[i] = Math.min(fuse[i], b.time);
-      }
-    }
-  }
-
-  // Explosion chains can bring forward other mine fuses.
-  for (let pass = 0; pass < s.mines.length; pass++) {
-    let changed = false;
-    for (let i = 0; i < s.mines.length; i++) {
-      for (let j = i + 1; j < s.mines.length; j++) {
-        if (dist(s.mines[i], s.mines[j]) > R.mines.blastRadius) continue;
-        const t = Math.min(fuse[i], fuse[j]);
-        if (fuse[i] !== t || fuse[j] !== t) changed = true;
-        fuse[i] = fuse[j] = t;
-      }
-    }
-    if (!changed) break;
-  }
-
-  for (let i = 0; i < s.mines.length; i++) {
-    blasts.push({
-      x: s.mines[i].x,
-      y: s.mines[i].y,
-      time: fuse[i],
-      radius: R.mines.blastRadius,
-      damage: R.mines.centerDamage,
-    });
-  }
-
-  return { bullets, grenades, blasts };
+  return result;
 }
 
-function nearDistance(rx, ry, vx, vy, duration) {
-  const vv = vx * vx + vy * vy;
-  const t = vv > 1e-9 ? clamp(-(rx * vx + ry * vy) / vv, 0, duration) : 0;
-  return Math.hypot(rx + vx * t, ry + vy * t);
+function insideGas(p, cloud, t) {
+  if (cloud.kind !== 'gas' || cloud.timeLeft <= t) return false;
+
+  const r = Math.min(
+    cloud.fullRadius,
+    cloud.radius +
+      t * cloud.fullRadius / Math.max(0.01, R.throwing.spreadTime)
+  );
+
+  if (distance(p, cloud) > r) return false;
+
+  for (const hole of cloud.holes) {
+    const remaining = hole.radius *
+      Math.max(0, 1 - t / Math.max(0.01, R.explosions.clearTime));
+
+    if (distance(p, hole) < remaining && shotClear(p, hole))
+      return false;
+  }
+
+  // Conservative approximation of gas spreading around corners.
+  return true;
 }
 
-function evaluateMove(command, s, weapon, context) {
-  const me = s.self;
-  const { steps, hazard, enemyPaths, waypoint, desired, target } = context;
-  let q = { x: me.x, y: me.y, vx: me.vx, vy: me.vy };
-  let risk = 0;
+// ============================================================
+// Movement scoring
+// ============================================================
 
-  const bulletHit = new Uint8Array(hazard.bullets.length);
-  const grenadeHit = new Uint8Array(hazard.grenades.length);
+function movement(
+  state, target, weapon, goal, collecting, danger, enemies
+) {
+  const me = state.self;
+  const point = waypoint(me, goal, state.tick);
+  const toward = unit(point.x - me.x, point.y - me.y);
 
-  for (let k = 0; k < steps; k++) {
-    const prev = q;
-    q = motionTick(q, command, weapon);
-    const t0 = k * DT, t = (k + 1) * DT;
+  let desired = toward;
 
-    for (let i = 0; i < hazard.bullets.length; i++) {
-      const b = hazard.bullets[i];
-      if (bulletHit[i] || b.until <= t0) continue;
+  const fighting = target && target.visible &&
+    walkClear(me, target) && !collecting;
 
-      // Model collision against this tick's post-movement position,
-      // matching the documented movement-before-projectiles order.
-      const duration = Math.min(DT, b.until - t0);
-      const miss = nearDistance(
-        q.x - b.x - b.vx * t0,
-        q.y - b.y - b.vy * t0,
-        -b.vx, -b.vy, duration
-      );
+  const ideal =
+    weapon === 'knife' ? 43 :
+    weapon === 'launcher' ? 320 :
+    weapon === 'laser' ? 370 :
+    target && target.weapon === 'knife' ? 300 : 250;
 
-      const reach = PR + b.radius;
-      if (miss <= reach + 1) {
-        bulletHit[i] = 1;
-        if (me.invulnerable < t) risk += R.gun.damage * 6;
-      } else if (miss < reach + 13 && me.invulnerable < t) {
-        risk += (reach + 13 - miss) * DT * 6;
-      }
-    }
+  if (fighting) {
+    const u = unit(target.x - me.x, target.y - me.y);
+    const radial = clamp((distance(me, target) - ideal) / 90, -1, 1);
+    const side = weapon === 'knife' ? 0.2 : 0.85;
 
-    for (let i = 0; i < hazard.grenades.length; i++) {
-      const g = hazard.grenades[i];
-      if (grenadeHit[i] || g.ownerId === me.id || g.until <= t0) continue;
-
-      const duration = Math.min(DT, g.until - t0);
-      const miss = nearDistance(
-        q.x - g.x - g.vx * t0,
-        q.y - g.y - g.vy * t0,
-        -g.vx, -g.vy, duration
-      );
-
-      if (miss <= PR + g.radius + 2) {
-        grenadeHit[i] = 1;
-        if (me.invulnerable < t) risk += R.launcher.centerDamage * 6;
-      }
-    }
-
-    for (const b of hazard.blasts) {
-      if (b.time > t || (k > 0 && b.time <= t0)) continue;
-      if (me.invulnerable >= t) continue;
-
-      const d = dist(q, b);
-      const reach = b.radius + PR;
-      if (d <= reach && clear(b, q)) {
-        risk += b.damage * 6 * (1 - 0.65 * clamp((d - PR) / b.radius, 0, 1));
-      }
-    }
-
-    if (s.zone.damagePerSecond && me.invulnerable < t) {
-      const outside = dist(q, s.zone) - zoneRadius(s.zone, t);
-      if (outside > 0) {
-        risk += (16 + Math.min(outside, 200) * 0.25) * DT;
-        if (Math.floor(s.time + t) > Math.floor(s.time + t0)) {
-          risk += s.zone.damagePerSecond * 6;
-        }
-      }
-    }
-
-    for (const e of enemyPaths) {
-      const p = e.player, ep = e.points[k];
-      const d = dist(q, ep);
-
-      if (d < 2 * PR + 3) risk += 80 * DT;
-
-      if (
-        p.weapon === "knife" &&
-        d < 2 * PR + R.knife.reach + 5 &&
-        p.cooldowns.knife <= t &&
-        me.invulnerable < t &&
-        clear(ep, q)
-      ) {
-        const a = Math.atan2(q.y - ep.y, q.x - ep.x);
-        const turn = R.player.turnRateDegrees * Math.PI / 180 * t;
-        if (
-          Math.abs(diff(a, p.facing)) <
-          R.knife.arcDegrees * Math.PI / 360 + turn
-        ) {
-          risk += (weapon === "knife" ? 70 : 230) * DT;
-        }
-      }
-    }
+    desired = unit(
+      u.x * radial - u.y * strafe * side,
+      u.y * radial + u.x * strafe * side
+    );
   }
 
-  const horizon = steps * DT;
-  const speed = speedOf(weapon);
-
-  // Keep an escape margin for explosions just beyond the rollout.
-  for (const b of hazard.blasts) {
-    if (b.time <= horizon || b.time > 2.5) continue;
-    const remaining = b.time - horizon;
-    const clearance = dist(q, b) - b.radius - PR;
-    const deficit = -clearance - speed * Math.max(0, remaining - 0.15) * 0.7;
-
-    if (deficit > 0 && clear(b, q)) risk += deficit * 2;
-  }
-
-  const dx = q.x - me.x, dy = q.y - me.y;
-  let score =
-    0.20 * (dist(me, waypoint) - dist(q, waypoint)) +
-    0.12 * (dx * desired.x + dy * desired.y) -
-    risk;
-
-  score += 1.5 * (command.x * lastMove.x + command.y * lastMove.y);
-
-  if (Math.hypot(command.x, command.y) > 0.7 && Math.hypot(dx, dy) < 8) {
-    score -= 18;
-  }
-
-  if (target && target.visible && weapon !== "knife" && clear(q, target)) {
-    const d = dist(q, predict(target, horizon));
-    const preferred = target.weapon === "knife" ? 245 : 295;
-    score -= Math.max(0, preferred - d) * 0.15;
-  }
-
-  return score;
-}
-
-function chooseMove(s, weapon, target, desired, waypoint) {
-  const me = s.self;
-  const steps = Math.max(1, Math.ceil(0.65 / DT));
-  const speed = speedOf(weapon);
-  const preserve = {
-    x: me.vx / speed,
-    y: me.vy / speed,
-  };
-
-  const candidates = [
-    desired,
-    preserve,
-    { x: 0, y: 0 },
-    lastMove,
-  ];
-
+  const candidates = [{ x: 0, y: 0 }, desired, toward];
   const base = Math.atan2(desired.y, desired.x);
-  // Evaluate opposite/symmetric directions early if the time guard trips.
-  const offsets = [4, -4, 8, 2, -2, 6, -6, 1, -1, 3, -3, 5, -5, 7, -7];
 
-  for (const i of offsets) {
-    const a = base + i * TAU / 16;
+  for (let i = 0; i < 16; i++) {
+    const a = base + TAU * i / 16;
     candidates.push({ x: Math.cos(a), y: Math.sin(a) });
   }
 
-  const enemyPaths = s.players
-    .filter(p => p.id !== me.id && p.alive && p.visible)
-    .map(player => ({
-      player,
-      points: Array.from({ length: steps }, (_, k) => predict(player, (k + 1) * DT)),
-    }));
+  const steps = 10;
+  const h = 1 / 15;
+  const vulnerability = 1 + 65 / Math.max(25, me.hp + me.shield);
 
-  const context = {
-    steps,
-    hazard: buildThreats(s, steps * DT),
-    enemyPaths,
-    waypoint,
-    desired,
-    target,
-  };
+  // Compute enemy and laser predictions once, not per candidate.
+  const forecasts = [];
 
-  let best = desired, bestScore = -Infinity;
-
-  for (let i = 0; i < candidates.length; i++) {
-    const value = evaluateMove(candidates[i], s, weapon, context);
-    if (value > bestScore) {
-      bestScore = value;
-      best = candidates[i];
-    }
-
-    // Soft guard only; performance still needs engine measurement.
-    if (performance.now() - decisionStart > 5.5) break;
+  for (let k = 1; k <= steps; k++) {
+    const t = k * h;
+    forecasts.push(
+      enemies.filter(e => e.visible).map(e => ({
+        enemy: e,
+        point: predictPlayer(e, t),
+      }))
+    );
   }
 
-  const length = Math.hypot(best.x, best.y);
-  return length > 1 ? unit(best.x, best.y) : best;
-}
+  const laserWarnings = [];
 
-function intercept(origin, target, speed) {
-  const p = predict(target, DT);
-  const rx = p.x - origin.x, ry = p.y - origin.y;
-  const vx = target.vx, vy = target.vy;
-  const a = vx * vx + vy * vy - speed * speed;
-  const b = 2 * (rx * vx + ry * vy);
-  const c = rx * rx + ry * ry;
+  for (const laser of state.lasers) {
+    if (laser.charge > steps * h + h) continue;
 
-  let time = Math.sqrt(c) / speed;
+    const shooter = state.players[laser.ownerId];
+    const shift = shooter
+      ? predictPlayer(shooter, laser.charge)
+      : laser.path[0];
 
-  if (Math.abs(a) < 1e-8) {
-    if (Math.abs(b) > 1e-8 && -c / b > 0) time = -c / b;
-  } else {
-    const disc = b * b - 4 * a * c;
-    if (disc >= 0) {
-      const root = Math.sqrt(disc);
-      const t0 = (-b - root) / (2 * a);
-      const t1 = (-b + root) / (2 * a);
-      let best = Infinity;
-      if (t0 > 0) best = t0;
-      if (t1 > 0) best = Math.min(best, t1);
-      if (Number.isFinite(best)) time = best;
-    }
+    laserWarnings.push({
+      laser,
+      sx: shift.x - laser.path[0].x,
+      sy: shift.y - laser.path[0].y,
+    });
   }
 
-  // Refine after clipping the enemy prediction at walls.
-  let point = predict(target, Math.min(2.5, DT + time));
-  for (let i = 0; i < 2; i++) {
-    time = dist(origin, point) / speed;
-    point = predict(target, Math.min(2.5, DT + time));
-  }
+  const ownLaser = state.lasers.find(l => l.ownerId === me.id);
+  const laserTarget = me.laserCharge > 0 && target && target.visible
+    ? predictPlayer(target, me.laserCharge)
+    : null;
 
-  return { point, time };
-}
+  let best = desired;
+  let bestScore = -Infinity;
 
-function firing(s, weapon, target, move) {
-  const me = s.self;
-  const origin = motionTick(me, move, weapon);
+  for (const command of candidates) {
+    let p = { x: me.x, y: me.y, vx: me.vx, vy: me.vy };
+    let score = 0;
+    const hitProjectiles = new Set();
 
-  if (!target) {
-    return {
-      aim: Math.hypot(origin.vx, origin.vy) > 5
-        ? Math.atan2(origin.vy, origin.vx)
-        : me.facing,
-      attack: false,
-    };
-  }
+    for (let k = 1; k <= steps; k++) {
+      const t = k * h;
+      const t0 = (k - 1) * h;
+      const old = p;
 
-  const shot = weapon === "knife"
-    ? { point: predict(target, DT), time: 0 }
-    : intercept(
-        origin, target,
-        weapon === "gun" ? R.gun.bulletSpeed : R.launcher.grenadeSpeed
-      );
+      let speed = speedFor(weapon);
 
-  const aim = Math.atan2(shot.point.y - origin.y, shot.point.x - origin.x);
-  const actualFacing = me.facing + clamp(diff(aim, me.facing), -TURN, TURN);
-  let attack = false;
+      if (state.clouds.some(c => insideGas(p, c, t)))
+        speed *= 1 - R.gas.slow;
 
-  if (
-    me.weapon !== weapon ||
-    me.cooldowns.switch > 0 ||
-    me.cooldowns[weapon] > 0 ||
-    (!target.visible && target.seenAgo > 0.1)
-  ) return { aim, attack };
+      p = advance(p, command, speed, h);
+      let risk = 0;
 
-  const d = dist(origin, shot.point);
-  const error = Math.abs(diff(aim, actualFacing));
-
-  if (weapon === "knife") {
-    attack =
-      target.invulnerable <= 0 &&
-      d <= 2 * PR + R.knife.reach - 1 &&
-      error <= R.knife.arcDegrees * Math.PI / 360 - 0.02 &&
-      clear(origin, shot.point);
-  } else {
-    const projectileRadius = weapon === "gun"
-      ? R.gun.bulletRadius : R.launcher.grenadeRadius;
-    const range = weapon === "gun" ? R.gun.range : R.launcher.range;
-    const tolerance = Math.asin(clamp((PR + projectileRadius - 3) / Math.max(d, 1), 0, 1));
-
-    const rayEnd = {
-      x: origin.x + Math.cos(actualFacing) * d,
-      y: origin.y + Math.sin(actualFacing) * d,
-    };
-
-    attack =
-      d < range - 8 &&
-      error <= tolerance &&
-      target.invulnerable <= shot.time &&
-      clear(origin, rayEnd, projectileRadius);
-
-    if (weapon === "gun" && d > 620 && me.ammo.gun < 12) attack = false;
-
-    if (weapon === "launcher") {
-      const safe = R.launcher.blastRadius + PR + 55;
-      if (d < safe) attack = false;
-
-      // Reject a nearby player intercepting the grenade.
-      for (const p of s.players) {
-        if (!p.alive || !p.visible || p.id === me.id) continue;
-        const pp = predict(p, DT);
-        const dx = pp.x - origin.x, dy = pp.y - origin.y;
-        const along = dx * Math.cos(actualFacing) + dy * Math.sin(actualFacing);
-        const side = Math.abs(-dx * Math.sin(actualFacing) + dy * Math.cos(actualFacing));
+      for (let j = 0; j < danger.length; j++) {
+        const b = danger[j];
+        if (hitProjectiles.has(j)) continue;
 
         if (
-          along > 0 && along < safe + PR &&
-          side < PR + projectileRadius + 12
-        ) attack = false;
+          b.life >= t0 &&
+          !(b.explosive && b.ownerId === me.id)
+        ) {
+          const endT = Math.min(t, b.life);
+          const f = clamp((endT - t0) / h, 0, 1);
+
+          const a = {
+            x: b.x + b.vx * t0 - old.x,
+            y: b.y + b.vy * t0 - old.y,
+          };
+
+          const c = {
+            x: b.x + b.vx * endT - (old.x + (p.x - old.x) * f),
+            y: b.y + b.vy * endT - (old.y + (p.y - old.y) * f),
+          };
+
+          const miss = segmentDistance({ x: 0, y: 0 }, a, c);
+
+          if (miss < radius + b.radius + 7) {
+            risk += b.explosive ? 180 : R.gun.damage;
+            hitProjectiles.add(j);
+          } else if (miss < radius + b.radius + 24) {
+            risk += b.explosive ? 4 : 1;
+          }
+        }
+
+        if (b.explosive && b.life >= t0 && b.life <= t) {
+          const d = distance(p, b.end) - radius;
+
+          if (d < R.launcher.blastRadius) {
+            risk += R.launcher.edgeDamage +
+              (R.launcher.centerDamage - R.launcher.edgeDamage) *
+              (1 - Math.max(0, d) / R.launcher.blastRadius);
+          }
+        }
       }
+
+      for (const mine of state.mines) {
+        const reach = R.mines.blastRadius + radius + 12;
+        const d = distance(p, mine);
+
+        if (d >= reach) continue;
+
+        const remaining = mine.fuse - t;
+
+        if (remaining >= -h && remaining < 0.8) {
+          risk += 18 * (1 - d / reach) /
+            Math.max(0.12, remaining + 0.2);
+        }
+
+        if (k === steps && remaining > 0 && remaining < 1.6) {
+          risk += 7 * Math.max(0, reach - d) /
+            Math.max(20, speed * remaining);
+        }
+      }
+
+      for (const warning of laserWarnings) {
+        const { laser, sx, sy } = warning;
+
+        if (Math.abs(laser.charge - t) > h * 1.1) continue;
+
+        for (let j = 1; j < laser.path.length; j++) {
+          if (laser.ownerId === me.id && j === 1) continue;
+
+          // Translation after a reflection remains an approximation.
+          const a = {
+            x: laser.path[j - 1].x + sx,
+            y: laser.path[j - 1].y + sy,
+          };
+
+          const b = {
+            x: laser.path[j].x + sx,
+            y: laser.path[j].y + sy,
+          };
+
+          if (
+            segmentDistance(p, a, b) <
+            radius + R.laser.beamRadius + 10
+          ) risk += R.laser.damage;
+        }
+      }
+
+      for (const c of state.clouds) {
+        if (insideGas(p, c, t)) risk += 2.8;
+      }
+
+      for (const forecast of forecasts[k - 1]) {
+        const e = forecast.enemy;
+        const q = forecast.point;
+        const d = distance(p, q);
+
+        if (d > 150) continue;
+        if (d < 2 * radius + 4) risk += 6;
+
+        if (
+          e.weapon === 'knife' &&
+          weapon !== 'knife' &&
+          d < 2 * radius + R.knife.reach + 25 &&
+          shotClear(p, q)
+        ) risk += 12;
+
+        if (e.invulnerable > t && d < 110) risk += 8;
+      }
+
+      const outside =
+        distance(p, state.zone) - zoneRadius(state.zone, t + 1);
+
+      if (outside > -18 && state.zone.damagePerSecond) {
+        score -= (Math.max(0, outside) * 0.13 + 2) / steps;
+      }
+
+      score -= risk * vulnerability * 1.7;
+
+      if (fighting) {
+        const forecast = forecasts[k - 1].find(
+          f => f.enemy.id === target.id
+        );
+
+        if (forecast)
+          score -= Math.abs(distance(p, forecast.point) - ideal) * 0.025;
+      }
+    }
+
+    score += (
+      (p.x - me.x) * desired.x +
+      (p.y - me.y) * desired.y
+    ) * 0.13;
+
+    if (!fighting) {
+      score += (
+        distance(me, point) - distance(p, point)
+      ) * 0.23;
+    }
+
+    if (ownLaser && laserTarget) {
+      const ux = Math.cos(ownLaser.angle);
+      const uy = Math.sin(ownLaser.angle);
+
+      const side = Math.abs(
+        (laserTarget.x - p.x) * uy -
+        (laserTarget.y - p.y) * ux
+      );
+
+      score -= side * 0.2;
+    }
+
+    // Smooth penalty: small valid escapes are no longer punished
+    // by the old abrupt "moved < 12 => -14" threshold.
+    const moved = distance(p, me);
+    const requested = Math.hypot(command.x, command.y);
+
+    if (requested > 0.5 && moved < 2) {
+      score -= 2 * (1 - moved / 2);
+    }
+
+    score += (command.x * me.vx + command.y * me.vy) * 0.004;
+
+    if (score > bestScore) {
+      bestScore = score;
+      best = command;
     }
   }
 
-  // Movement selection treated spawn protection as active.
-  // Keep it intact for this tick, including avoiding mine planting.
-  if (me.invulnerable > 0) attack = false;
-
-  return { aim, attack };
+  return best;
 }
 
-function canPlant(s, weapon, target, move) {
-  const me = s.self;
+// ============================================================
+// Aiming and attacks
+// ============================================================
+
+function intercept(origin, target, speed) {
+  const rx = target.x - origin.x;
+  const ry = target.y - origin.y;
+
+  const a = target.vx * target.vx + target.vy * target.vy -
+    speed * speed;
+  const b = 2 * (rx * target.vx + ry * target.vy);
+  const c = rx * rx + ry * ry;
+
+  let t = Math.sqrt(c) / speed;
+  const discriminant = b * b - 4 * a * c;
+
+  if (Math.abs(a) > 1e-8 && discriminant >= 0) {
+    const root = Math.sqrt(discriminant);
+    const times = [
+      (-b - root) / (2 * a),
+      (-b + root) / (2 * a),
+    ].filter(v => v > 0);
+
+    if (times.length) t = Math.min(...times);
+  } else if (Math.abs(b) > 1e-8 && -c / b > 0) {
+    t = -c / b;
+  }
+
+  return {
+    point: predictPlayer(target, Math.min(1.6, t)),
+    time: t,
+  };
+}
+
+function attackAction(state, target, weapon, move) {
+  const me = state.self;
+  const action = { move, weapon, attack: false };
+
+  if (!target) return action;
+
+  const origin = advance(me, move, speedFor(weapon), dt);
+
+  let lead;
+  let flight = 0;
+
+  if (weapon === 'knife') {
+    lead = predictPlayer(target, dt);
+  } else if (weapon === 'laser') {
+    flight = R.laser.chargeTime;
+    lead = predictPlayer(target, flight);
+  } else {
+    const solution = intercept(
+      origin,
+      target,
+      weapon === 'gun'
+        ? R.gun.bulletSpeed
+        : R.launcher.grenadeSpeed
+    );
+
+    lead = solution.point;
+    flight = solution.time;
+  }
+
+  const aim = Math.atan2(lead.y - origin.y, lead.x - origin.x);
+  action.aim = aim;
+
+  const turn = R.player.turnRateDegrees * Math.PI / 180 * dt;
+  const facing = me.laserCharge > 0
+    ? me.facing
+    : me.facing + clamp(angleDiff(aim, me.facing), -turn, turn);
+
+  const error = Math.abs(angleDiff(aim, facing));
+  const d = distance(origin, lead);
+
+  const fresh = target.visible || target.seenAgo < 0.2;
+  const ready =
+    me.weapon === weapon &&
+    me.cooldowns.switch <= 0 &&
+    me.cooldowns[weapon] <= 0 &&
+    me.laserCharge <= 0;
+
+  if (fresh && ready && target.invulnerable <= flight) {
+    if (weapon === 'knife') {
+      action.attack =
+        d <= 2 * radius + R.knife.reach - 2 &&
+        error <= R.knife.arcDegrees * Math.PI / 360 - 0.04 &&
+        shotClear(origin, lead);
+
+    } else if (weapon === 'gun') {
+      action.attack =
+        d < R.gun.range * 0.82 &&
+        error < Math.atan2(
+          radius + R.gun.bulletRadius - 4,
+          Math.max(1, d)
+        ) &&
+        shotClear(origin, lead, R.gun.bulletRadius);
+
+    } else if (weapon === 'launcher') {
+      const safety = R.launcher.blastRadius + radius + 60;
+      const nearEnd = {
+        x: origin.x + Math.cos(facing) * safety,
+        y: origin.y + Math.sin(facing) * safety,
+      };
+
+      const nearPlayer = state.players.some(p =>
+        p.alive &&
+        p.id !== me.id &&
+        p.visible &&
+        distance(origin, p) < safety &&
+        segmentDistance(p, origin, nearEnd) <
+          radius + R.launcher.grenadeRadius
+      );
+
+      action.attack =
+        d > safety &&
+        d < R.launcher.range * 0.9 &&
+        error < Math.atan2(
+          radius + R.launcher.grenadeRadius - 3,
+          Math.max(1, d)
+        ) &&
+        shotClear(origin, lead, R.launcher.grenadeRadius) &&
+        shotClear(origin, nearEnd, R.launcher.grenadeRadius) &&
+        !nearPlayer;
+
+    } else {
+      action.attack =
+        d > 150 &&
+        d < 900 &&
+        error < 0.035 &&
+        shotClear(origin, lead, R.laser.beamRadius);
+    }
+  }
 
   if (
-    !target || !target.visible ||
-    target.weapon !== "knife" ||
-    me.mines <= 0 || me.cooldowns.mine > 0 ||
-    me.invulnerable > 0 ||
-    dist(me, target) < 70 || dist(me, target) > 155 ||
-    s.mines.some(m => dist(m, me) < 190) ||
-    s.grenades.some(g => dist(g, me) < 220)
-  ) return false;
+    me.invulnerable > 0.25 &&
+    weapon === 'knife' &&
+    target.hp + target.shield > R.knife.damage &&
+    target.weapon !== 'knife'
+  ) {
+    action.attack = false;
+  }
 
-  const away = unit(me.x - target.x, me.y - target.y);
-  if (move.x * away.x + move.y * away.y < 0.7) return false;
+  if (
+    me.gasGrenades > 0 &&
+    me.cooldowns.throw <= 0 &&
+    me.invulnerable <= 0 &&
+    target.visible &&
+    d > 170 &&
+    d < R.throwing.maxDistance &&
+    error < 0.12 &&
+    shotClear(origin, lead, R.throwing.radius)
+  ) {
+    action.throw = 'gas';
+    action.throwDistance = Math.min(d, R.throwing.maxDistance);
+  }
 
-  const plantedAt = motionTick(me, move, weapon);
-  let q = plantedAt;
+  const pursuing = target.visible &&
+    (
+      target.vx * (me.x - target.x) +
+      target.vy * (me.y - target.y)
+    ) > 0;
 
-  // Require a verified initial escape under current inertia.
-  const ticks = Math.ceil(Math.min(1.3, R.mines.fuse * 0.75) / DT);
-  for (let i = 0; i < ticks; i++) q = motionTick(q, move, weapon);
+  if (
+    me.mines > 0 &&
+    me.cooldowns.mine <= 0 &&
+    me.invulnerable <= 0 &&
+    pursuing &&
+    distance(me, target) < 150 &&
+    Math.hypot(me.vx, me.vy) > 130 &&
+    !state.mines.some(
+      m => distance(me, m) < R.mines.blastRadius + 60
+    )
+  ) {
+    const escapeDistance = R.mines.blastRadius + radius + 40;
 
-  if (dist(q, plantedAt) < R.mines.blastRadius + PR + 30) return false;
+    const escape = {
+      x: me.x + move.x * escapeDistance,
+      y: me.y + move.y * escapeDistance,
+    };
 
-  return !s.zone.damagePerSecond ||
-    dist(q, s.zone) < zoneRadius(s.zone, R.mines.fuse) - 20;
+    if (
+      free(escape) &&
+      walkClear(me, escape) &&
+      distance(escape, state.zone) <
+        zoneRadius(state.zone, R.mines.fuse)
+    ) {
+      action.plantMine = true;
+    }
+  }
+
+  if (
+    !action.throw &&
+    !action.attack &&
+    me.smokeGrenades > 0 &&
+    me.cooldowns.throw <= 0 &&
+    me.invulnerable <= 0 &&
+    me.hp + me.shield < 55 &&
+    distance(me, target) > 160 &&
+    (me.hideLeft == null || me.hideLeft > 2) &&
+    !state.clouds.some(
+      c => c.kind === 'smoke' && distance(me, c) < c.radius
+    )
+  ) {
+    action.throw = 'smoke';
+    action.throwDistance = 0;
+  }
+
+  return action;
 }
 
-export function decide(s) {
-  decisionStart = performance.now();
-  const me = s.self;
+// ============================================================
+// Main decision
+// ============================================================
+
+export function decide(state) {
+  const me = state.self;
 
   if (!me.alive) {
-    aliveBefore = false;
+    previousAlive = false;
     return null;
   }
 
-  if (!aliveBefore) {
-    aliveBefore = true;
-    route = null;
-    lastMove = { x: 0, y: 0 };
-    targetId = null;
+  if (!previousAlive) {
+    routeCache = null;
+    heldItem = -1;
+    lastWeaponChange = -100;
+    lastRequestedWeapon = me.weapon;
+    previousAlive = true;
   }
 
-  const target = selectTarget(s);
-  const loot = selectLoot(s);
-  const weapon = selectWeapon(me, target);
+  const enemies = state.players.filter(
+    p => p.id !== me.id && p.alive
+  );
+
+  const target = chooseTarget(state, enemies);
+  const weapon = chooseWeapon(state, target);
+  const item = chooseItem(state, enemies);
+
+  if (state.time >= nextStrafe) {
+    strafe = -strafe;
+    nextStrafe = state.time + 1.1 + Math.random() * 1.4;
+  }
+
+  let goal = { x: state.zone.x, y: state.zone.y };
+  let collecting = false;
+
   const armed =
     (me.hasGun && me.ammo.gun > 0) ||
-    (me.hasLauncher && me.ammo.launcher > 0);
+    (me.hasLauncher && me.ammo.launcher > 0) ||
+    (me.hasLaser && me.ammo.laser > 0);
 
-  if (s.time >= orbitUntil) {
-    orbitSign = Math.random() < 0.5 ? -1 : 1;
-    orbitUntil = s.time + 1.3 + Math.random() * 1.2;
+  if (target) goal = target;
+
+  if (item) {
+    const d = distance(me, item);
+
+    const urgent =
+      item.type === 'life' ||
+      (item.type === 'health' && me.hp < 65) ||
+      !armed;
+
+    if (
+      urgent ||
+      !target ||
+      d < 260 ||
+      !shotClear(me, target, R.gun.bulletRadius)
+    ) {
+      goal = item;
+      collecting = true;
+    }
   }
 
-  // Include current outward momentum in the zone margin.
-  const fromCenter = unit(me.x - s.zone.x, me.y - s.zone.y);
-  const outwardSpeed = Math.max(0, me.vx * fromCenter.x + me.vy * fromCenter.y);
-  const brakingMargin = outwardSpeed * (R.player.accelTime ?? 0.3) * 0.5;
+  if ((!target || !target.visible) && !collecting) {
+    goal = { x: state.zone.x, y: state.zone.y };
 
-  const zoneDanger =
-    s.zone.damagePerSecond > 0 &&
-    dist(me, s.zone) >
-      Math.max(0, zoneRadius(s.zone, 3.5) - 45 - brakingMargin);
+    if (target && target.seenAgo < 0.7)
+      goal = target;
+  }
 
-  let goal = null;
-  let desired = { x: 0, y: 0 };
-  let waypoint = { x: me.x, y: me.y };
+  const safeRadius = zoneRadius(state.zone, 3);
 
-  if (zoneDanger) {
-    goal = { x: s.zone.x, y: s.zone.y };
-  } else if (
-    loot &&
-    (
-      !armed || !target || loot.score > 65 ||
-      (dist(me, loot.item) < 175 && dist(me, target) > 150)
-    )
+  if (
+    state.zone.damagePerSecond &&
+    distance(me, state.zone) > Math.max(0, safeRadius - 45)
   ) {
-    goal = loot.item;
-  } else if (target) {
-    const d = dist(me, target);
-    const toward = unit(target.x - me.x, target.y - me.y);
+    goal = { x: state.zone.x, y: state.zone.y };
+    collecting = true;
+  }
 
-    if (weapon === "knife") {
-      const advantage =
-        me.hp + me.shield >= target.hp + target.shield ||
-        target.hp + target.shield <= R.knife.damage;
+  if (
+    !free(goal) &&
+    goal.x === state.zone.x &&
+    goal.y === state.zone.y
+  ) {
+    let best = null;
+    let bestCost = Infinity;
 
-      if (loot && (d > 100 || !advantage)) {
-        goal = loot.item;
-      } else if (
-        (advantage && target.weapon === "knife") ||
-        d < 95 ||
-        target.hp + target.shield <= R.knife.damage
-      ) {
-        goal = predict(target, 0.15);
-      } else if (loot) {
-        goal = loot.item;
-      } else if (d > 500) {
-        goal = { x: s.zone.x, y: s.zone.y };
-      } else {
-        desired = unit(
-          -toward.x - toward.y * orbitSign * 0.4,
-          -toward.y + toward.x * orbitSign * 0.4
-        );
+    for (const p of nodes) {
+      const cost =
+        distance(p, state.zone) * 3 +
+        distance(me, p);
+
+      if (cost < bestCost) {
+        bestCost = cost;
+        best = p;
       }
-    } else if (!clear(me, target, R.gun.bulletRadius)) {
-      goal = loot && loot.score > 25 ? loot.item : target;
-    } else {
-      const preferred = target.weapon === "knife" ? 255 : 310;
-      const radial = clamp((d - preferred) / 95, -1, 1);
-
-      desired = unit(
-        toward.x * radial - toward.y * orbitSign * 0.85,
-        toward.y * radial + toward.x * orbitSign * 0.85
-      );
-    }
-  } else if (loot) {
-    goal = loot.item;
-  } else {
-    const center = freeGoal({ x: s.zone.x, y: s.zone.y });
-    if (dist(me, center) > 80) goal = center;
-  }
-
-  if (goal) {
-    waypoint = waypointTo(me, goal, s.tick);
-
-    const dx = waypoint.x - me.x;
-    const dy = waypoint.y - me.y;
-    const d = Math.hypot(dx, dy);
-    const heading = unit(dx, dy);
-
-    // Slow near a final destination, but retain speed around navigation corners.
-    const atFinal = dist(waypoint, goal) < 8;
-    let throttle = 1;
-
-    if (atFinal && d < 75) {
-      const acceleration = speedOf(weapon) / Math.max(R.player.accelTime ?? 0.3, DT);
-      const desiredSpeed = Math.sqrt(2 * acceleration * Math.max(0, d - 8));
-      throttle = clamp(desiredSpeed / speedOf(weapon), 0, 1);
     }
 
-    desired = { x: heading.x * throttle, y: heading.y * throttle };
-  } else {
-    waypoint = {
-      x: me.x + desired.x * 180,
-      y: me.y + desired.y * 180,
-    };
+    if (best) goal = best;
   }
 
-  const move = chooseMove(s, weapon, target, desired, waypoint);
-  const shot = firing(s, weapon, target, move);
+  const danger = threats(state);
 
-  // Planting is optional; reserve the remaining budget for returning the action.
-  const plantMine = performance.now() - decisionStart < 7
-    ? canPlant(s, weapon, target, move)
-    : false;
-
-  lastMove = move;
-
-  return {
-    move,
-    aim: shot.aim,
-    attack: shot.attack,
+  const move = movement(
+    state,
+    target,
     weapon,
-    plantMine,
-  };
+    goal,
+    collecting,
+    danger,
+    enemies
+  );
+
+  return attackAction(state, target, weapon, move);
 }

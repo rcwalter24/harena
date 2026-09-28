@@ -1,24 +1,20 @@
-// Apex: a survival-focused FFA arena bot for Harena.
-// Strategy: grab a gun fast, pick off weakened enemies, dodge projectiles,
-// manage the safe zone, disengage when outmatched, and finish the rest.
-export const meta = { name: 'Doubao', author: 'Doubao' };
+// Harena high-win-rate bot: "Survivor"
+// Strategy: survival first, pick off weakened targets, multi-weapon synergy,
+// never force fights, always stay inside the zone, dodge everything dodgeable.
+export const meta = { name: 'doubao', author: 'Doubao' };
 
 let rules = null;
 let walls = [];
-let mapW = 0, mapH = 0;
+let bushes = [];
+let mapSize = { w: 0, h: 0 };
 let strafeSign = 1;
 let strafeFlipAt = 0;
-let stuckTime = 0; // seconds we've been crawling (for wall-stuck detection)
-
-export function init(info) {
-  rules = info.rules;
-  walls = info.map.walls || [];
-  mapW = info.map.width;
-  mapH = info.map.height;
-}
+let lastRetreatDir = null;
 
 // ---------- geometry helpers ----------
+
 const dist = (a, b) => Math.hypot(a.x - b.x, a.y - b.y);
+const dist2 = (a, b) => { const dx = a.x - b.x, dy = a.y - b.y; return dx * dx + dy * dy; };
 
 function angleDiff(a, b) {
   let d = (a - b) % (2 * Math.PI);
@@ -27,47 +23,53 @@ function angleDiff(a, b) {
   return d;
 }
 
-function norm(v) {
-  const l = Math.hypot(v.x, v.y);
-  return l > 1e-9 ? { x: v.x / l, y: v.y / l } : { x: 0, y: 0 };
+function normalize(v) {
+  const len = Math.hypot(v.x, v.y);
+  return len > 1e-9 ? { x: v.x / len, y: v.y / len } : { x: 0, y: 0 };
 }
 
-function segRect(x0, y0, x1, y1, r, pad) {
-  let t0 = 0, t1 = 1;
-  const d = [x1 - x0, y1 - y0];
-  const p = [x0, y0];
-  const lo = [r.x - pad, r.y - pad];
-  const hi = [r.x + r.w + pad, r.y + r.h + pad];
+// Segment vs rect slab test, grown by pad.
+function segmentHitsRect(x0, y0, x1, y1, r, pad) {
+  let tMin = 0, tMax = 1;
+  const d = [x1 - x0, y1 - y0], p = [x0, y0];
+  const lo = [r.x - pad, r.y - pad], hi = [r.x + r.w + pad, r.y + r.h + pad];
   for (let i = 0; i < 2; i++) {
     if (d[i] === 0) {
       if (p[i] < lo[i] || p[i] > hi[i]) return false;
     } else {
-      let a = (lo[i] - p[i]) / d[i];
-      let b = (hi[i] - p[i]) / d[i];
-      if (a > b) { const t = a; a = b; b = t; }
-      t0 = Math.max(t0, a);
-      t1 = Math.min(t1, b);
-      if (t0 > t1) return false;
+      let t1 = (lo[i] - p[i]) / d[i], t2 = (hi[i] - p[i]) / d[i];
+      if (t1 > t2) { const tmp = t1; t1 = t2; t2 = tmp; }
+      tMin = Math.max(tMin, t1);
+      tMax = Math.min(tMax, t2);
+      if (tMin > tMax) return false;
     }
   }
   return true;
 }
 
-function los(a, b, pad) {
-  return !walls.some(w => segRect(a.x, a.y, b.x, b.y, w, pad || 0));
+function clearShot(a, b, pad) {
+  for (const w of walls) if (segmentHitsRect(a.x, a.y, b.x, b.y, w, pad)) return false;
+  return true;
 }
 
 function walkable(a, b) {
-  return !walls.some(w => segRect(a.x, a.y, b.x, b.y, w, rules.player.radius - 2));
+  for (const w of walls) if (segmentHitsRect(a.x, a.y, b.x, b.y, w, rules.player.radius - 2)) return false;
+  return true;
 }
 
+// Simple wall-avoiding direction: head straight if clear, else go around the blocker's corner.
 function pathTo(me, goal) {
-  const straight = norm({ x: goal.x - me.x, y: goal.y - me.y });
+  const straight = normalize({ x: goal.x - me.x, y: goal.y - me.y });
   if (walkable(me, goal)) return straight;
   const r = rules.player.radius;
-  const blocker = walls
-    .filter(w => segRect(me.x, me.y, goal.x, goal.y, w, r - 2))
-    .sort((a, b) => dist(me, { x: a.x + a.w / 2, y: a.y + a.h / 2 }) - dist(me, { x: b.x + b.w / 2, y: b.y + b.h / 2 }))[0];
+  let blocker = null, bd = Infinity;
+  for (const w of walls) {
+    if (segmentHitsRect(me.x, me.y, goal.x, goal.y, w, r - 2)) {
+      const c = { x: w.x + w.w / 2, y: w.y + w.h / 2 };
+      const d = dist(me, c);
+      if (d < bd) { bd = d; blocker = w; }
+    }
+  }
   if (!blocker) return straight;
   const m = r + 12;
   const corners = [
@@ -75,60 +77,25 @@ function pathTo(me, goal) {
     { x: blocker.x + blocker.w + m, y: blocker.y - m },
     { x: blocker.x - m, y: blocker.y + blocker.h + m },
     { x: blocker.x + blocker.w + m, y: blocker.y + blocker.h + m },
-  ].filter(c => c.x > r && c.y > r && c.x < mapW - r && c.y < mapH - r && dist(c, me) > 8);
+  ].filter(c => c.x > r && c.y > r && c.x < mapSize.w - r && c.y < mapSize.h - r);
+  const onward = (c) => {
+    if (walkable(c, goal)) return dist(c, goal);
+    let best = 1e4;
+    for (const c2 of corners) {
+      if (c2 !== c && walkable(c, c2) && walkable(c2, goal)) best = Math.min(best, dist(c, c2) + dist(c2, goal));
+    }
+    return best;
+  };
   let best = null, bestCost = Infinity;
   for (const c of corners) {
-    const cost = dist(me, c) + dist(c, goal) + (walkable(me, c) ? 0 : 1000);
+    if (dist(c, me) <= 8) continue;
+    const cost = dist(me, c) + onward(c) + (walkable(me, c) ? 0 : 1e4);
     if (cost < bestCost) { bestCost = cost; best = c; }
   }
-  return best ? norm({ x: best.x - me.x, y: best.y - me.y }) : straight;
+  return best ? normalize({ x: best.x - me.x, y: best.y - me.y }) : straight;
 }
 
-// ---------- threat avoidance ----------
-function dodgeVec(state, me) {
-  let dx = 0, dy = 0;
-  for (const b of state.bullets) {
-    if (b.ownerId === me.id) continue;
-    const sp = Math.hypot(b.vx, b.vy) || 1;
-    const ux = b.vx / sp, uy = b.vy / sp;
-    const rx = me.x - b.x, ry = me.y - b.y;
-    const along = rx * ux + ry * uy;
-    // Inertia: we need ~0.4-0.5s of sidestep to clear a bullet, so react early.
-    if (along < 0 || along > sp * 1.5) continue;
-    const side = rx * -uy + ry * ux;
-    const danger = rules.player.radius + b.radius + 16;
-    if (Math.abs(side) > danger) continue;
-    const s = side >= 0 ? 1 : -1;
-    // Weight ramps up as the bullet closes in.
-    const w = 1.5 - along / (sp * 1.5);
-    dx += -uy * s * w;
-    dy += ux * s * w;
-  }
-  for (const g of state.grenades) {
-    if (g.ownerId === me.id) continue;
-    const d = dist(g, me);
-    if (d < rules.launcher.blastRadius + rules.player.radius + 60) {
-      const away = d > 1e-6 ? norm({ x: me.x - g.x, y: me.y - g.y }) : { x: 1, y: 0 };
-      dx += away.x * 1.5;
-      dy += away.y * 1.5;
-    }
-  }
-  return { x: dx, y: dy };
-}
-
-function mineEscape(state, me) {
-  let dx = 0, dy = 0;
-  const reach = rules.mines.blastRadius + rules.player.radius + 25;
-  for (const m of state.mines) {
-    const d = dist(m, me);
-    if (d > reach || m.fuse > 1.6) continue;
-    const away = d > 1e-6 ? norm({ x: me.x - m.x, y: me.y - m.y }) : { x: 1, y: 0 };
-    const urg = 1 + (1.6 - m.fuse) * 1.5;
-    dx += away.x * urg;
-    dy += away.y * urg;
-  }
-  return { x: dx, y: dy };
-}
+// ---------- zone ----------
 
 function zoneRadiusIn(zone, t) {
   if (zone.collapseStartsIn !== null && t >= zone.collapseStartsIn) {
@@ -143,210 +110,352 @@ function zoneRadiusIn(zone, t) {
 }
 
 function zonePull(state, me) {
-  const z = state.zone;
-  if (z.damagePerSecond === 0) return { x: 0, y: 0 };
-  const d = dist(me, z);
-  const futureR = zoneRadiusIn(z, 3);
-  const slack = futureR - rules.player.radius - 40 - d;
-  if (slack > 0) return { x: 0, y: 0 };
-  const k = Math.min(3.5, 0.8 - slack / 40);
-  const dir = pathTo(me, z);
+  const zone = state.zone;
+  if (zone.damagePerSecond === 0) return { x: 0, y: 0 };
+  const d = dist(me, zone);
+  // Pull 2.5 s ahead so we don't get caught by the shrink.
+  const slack = zoneRadiusIn(zone, 2.5) - rules.player.radius - 40 - d;
+  if (slack > 0 || d < 1e-6) return { x: 0, y: 0 };
+  const k = Math.min(3, 0.6 - slack / 50);
+  const dir = pathTo(me, zone);
   return { x: dir.x * k, y: dir.y * k };
 }
 
-// ---------- target & item selection ----------
-function pickTarget(state, me) {
-  let best = null, bestScore = -Infinity;
+// ---------- threat avoidance ----------
+
+function dodgeVector(state, me) {
+  let dx = 0, dy = 0;
+  // Bullets
+  for (const b of state.bullets) {
+    if (b.ownerId === me.id) continue;
+    const sp = Math.hypot(b.vx, b.vy) || 1;
+    const ux = b.vx / sp, uy = b.vy / sp;
+    const rx = me.x - b.x, ry = me.y - b.y;
+    const along = rx * ux + ry * uy;
+    if (along < 0 || along > sp * 1.2) continue;
+    const side = rx * -uy + ry * ux;
+    const danger = rules.player.radius + b.radius + 14;
+    if (Math.abs(side) > danger) continue;
+    const s = side >= 0 ? 1 : -1;
+    const w = 1 - along / (sp * 1.2);
+    dx += -uy * s * w * 1.5;
+    dy += ux * s * w * 1.5;
+  }
+  // Grenades (will explode)
+  for (const g of state.grenades) {
+    if (g.ownerId === me.id) continue;
+    const d = dist(g, me);
+    const safe = rules.launcher.blastRadius + rules.player.radius + 30;
+    if (d < safe) {
+      const away = d > 1e-6 ? { x: (me.x - g.x) / d, y: (me.y - g.y) / d } : { x: 1, y: 0 };
+      const urg = (safe - d) / safe;
+      dx += away.x * urg * 3;
+      dy += away.y * urg * 3;
+    }
+  }
+  return { x: dx, y: dy };
+}
+
+function mineEscape(state, me) {
+  let dx = 0, dy = 0;
+  const reach = rules.mines.blastRadius + rules.player.radius + 25;
+  for (const m of state.mines) {
+    const d = dist(m, me);
+    if (d > reach || m.fuse > 1.8) continue;
+    const away = d > 1e-6 ? { x: (me.x - m.x) / d, y: (me.y - m.y) / d } : { x: 1, y: 0 };
+    const urg = 1 + (1.8 - m.fuse) * 1.5;
+    dx += away.x * urg * 2.5;
+    dy += away.y * urg * 2.5;
+  }
+  return { x: dx, y: dy };
+}
+
+// Dodge charging lasers: get off the warning line early.
+function laserDodge(state, me) {
+  let dx = 0, dy = 0;
+  for (const l of state.lasers) {
+    if (l.ownerId === me.id) continue;
+    // The path is a polyline from shooter; check distance from me to each segment.
+    for (let i = 0; i + 1 < l.path.length; i++) {
+      const a = l.path[i], b = l.path[i + 1];
+      const abx = b.x - a.x, aby = b.y - a.y;
+      const len2 = abx * abx + aby * aby;
+      if (len2 < 1e-6) continue;
+      const t = Math.max(0, Math.min(1, ((me.x - a.x) * abx + (me.y - a.y) * aby) / len2));
+      const cx = a.x + t * abx, cy = a.y + t * aby;
+      const d = Math.hypot(me.x - cx, me.y - cy);
+      const danger = rules.player.radius + rules.laser.beamRadius + 10;
+      if (d < danger + l.charge * 100) {
+        // Push perpendicular off the line.
+        const nx = -aby / Math.sqrt(len2), ny = abx / Math.sqrt(len2);
+        const side = ((me.x - a.x) * ny - (me.y - a.y) * nx);
+        const s = side >= 0 ? 1 : -1;
+        const urg = (danger + l.charge * 100 - d) / danger;
+        dx += nx * s * urg * 3;
+        dy += ny * s * urg * 3;
+      }
+    }
+  }
+  return { x: dx, y: dy };
+}
+
+// ---------- target selection ----------
+
+// Score a potential target: higher = better to attack.
+function scoreTarget(state, me, t) {
+  let s = 1000 / (dist(t, me) + 1);
+  // Prefer weakened targets.
+  const threat = t.hp + t.shield;
+  s += (200 - threat) * 1.5;
+  // Prefer fewer lives.
+  s += (5 - t.lives) * 30;
+  // Visible bonus.
+  if (!t.visible) s -= 500;
+  // Penalise targets that are far away or have cover.
+  if (!clearShot(me, t, rules.gun.bulletRadius)) s -= 300;
+  // Don't pick a target that another enemy is already shooting at (let them duel).
+  for (const o of state.players) {
+    if (o.id === me.id || o.id === t.id || !o.alive) continue;
+    if (o.visible && dist(o, t) < 250 && dist(o, me) > 200) { s -= 80; break; }
+  }
+  // Don't attack someone who is already nearly dead to the zone (nobody gets the kill).
+  return s;
+}
+
+function bestTarget(state, me) {
+  let best = null, bs = -Infinity;
   for (const p of state.players) {
-    if (p.id === me.id || !p.alive) continue;
-    const d = dist(p, me);
-    let score = 0;
-    score -= d * 0.5;
-    if (!p.visible) score -= 600;
-    if (p.invulnerable > 0) score -= 400;
-    score -= (p.hp + p.shield) * 1.5;
-    score -= p.lives * 15;
-    if (p.hp <= 35) score += 250; // execute
-    const canSee = p.visible && los(me, p, rules.player.radius);
-    if (!canSee) score -= 150;
-    if (d > 600) score -= (d - 600) * 0.5;
-    if (score > bestScore) { bestScore = score; best = p; }
+    if (p.id === me.id || !p.alive || p.eliminated) continue;
+    const s = scoreTarget(state, me, p);
+    if (s > bs) { bs = s; best = p; }
   }
   return best;
 }
 
-function itemScore(it, me) {
-  switch (it.type) {
-    case 'health': return me.hp < 40 ? 250 : me.hp < 70 ? 90 : 0;
-    case 'shield': return me.shield < 30 ? 200 : me.shield < 70 ? 70 : 0;
-    case 'life': return me.lives <= 1 ? 300 : me.lives < 3 ? 100 : 0;
-    case 'gun': return !me.hasGun ? 350 : 0;
-    case 'ammo': return me.hasGun && me.ammo.gun < 15 ? 120 : 0;
-    case 'launcher': return !me.hasLauncher ? 70 : 0;
-    case 'mines': return me.mines === 0 ? 50 : 0;
+// Count how many alive enemies are near me.
+function nearbyEnemies(state, me, radius) {
+  let n = 0;
+  for (const p of state.players) {
+    if (p.id === me.id || !p.alive) continue;
+    if (dist(p, me) < radius) n++;
   }
-  return 0;
+  return n;
 }
 
-function wantItems(state, me) {
-  const useful = (it) => {
-    if (it.type === 'health') return me.hp < 100;
-    if (it.type === 'shield') return me.shield < 100;
-    if (it.type === 'life') return me.lives < rules.player.maxLives;
-    if (it.type === 'gun') return !me.hasGun || me.ammo.gun < rules.gun.maxAmmo;
-    if (it.type === 'ammo') return me.hasGun && me.ammo.gun < rules.gun.maxAmmo;
-    if (it.type === 'launcher') return !me.hasLauncher || me.ammo.launcher < rules.launcher.maxAmmo;
-    if (it.type === 'mines') return me.mines < rules.mines.maxCarry;
-    return false;
-  };
-  const futureR = zoneRadiusIn(state.zone, 3) - 20;
-  const safe = (it) => state.zone.damagePerSecond === 0 || dist(it, state.zone) < futureR;
-  return state.items
-    .filter(it => useful(it) && safe(it))
-    .sort((a, b) => (dist(a, me) - itemScore(a, me)) - (dist(b, me) - itemScore(b, me)));
+// ---------- items ----------
+
+function wantItem(me, it) {
+  switch (it.type) {
+    case 'health': return me.hp < rules.player.maxHp * 0.75;
+    case 'shield': return me.shield < rules.player.maxShield * 0.8;
+    case 'life': return me.lives < rules.player.maxLives;
+    case 'gun': return !me.hasGun || me.ammo.gun < rules.gun.maxAmmo;
+    case 'ammo': return me.hasGun && me.ammo.gun < rules.gun.maxAmmo;
+    case 'launcher': return !me.hasLauncher || me.ammo.launcher < rules.launcher.maxAmmo;
+    case 'laser': return !me.hasLaser || me.ammo.laser < rules.laser.maxAmmo;
+    case 'mines': return me.mines < rules.mines.maxCarry;
+    case 'smoke': return me.smokeGrenades < rules.smoke.maxCarry;
+    case 'gas': return me.gasGrenades < rules.gas.maxCarry;
+  }
+  return false;
 }
 
-// ---------- main decision ----------
+function bestItem(state, me) {
+  const zoneSoon = zoneRadiusIn(state.zone, 2.5) - 20;
+  let best = null, bs = -Infinity;
+  for (const it of state.items) {
+    if (!wantItem(me, it)) continue;
+    if (state.zone.damagePerSecond > 0 && dist(it, state.zone) > zoneSoon) continue;
+    const d = dist(it, me);
+    // Weight by desirability.
+    let w = 1000 / (d + 1);
+    if (it.type === 'health' && me.hp < 40) w += 500;
+    if (it.type === 'shield' && me.shield < 30) w += 300;
+    if (it.type === 'gun' && !me.hasGun) w += 600;
+    if (it.type === 'life') w += 200;
+    if (w > bs) { bs = w; best = it; }
+  }
+  return best;
+}
+
+// ---------- init ----------
+
+export function init(info) {
+  rules = info.rules;
+  walls = info.map.walls;
+  bushes = info.map.bushes;
+  mapSize = { w: info.map.width, h: info.map.height };
+}
+
+// ---------- decide ----------
+
 export function decide(state) {
   const me = state.self;
   if (!me.alive) return null;
 
-  const dodge = dodgeVec(state, me);
+  const enemy = bestTarget(state, me);
+  const dodge = dodgeVector(state, me);
   const escape = mineEscape(state, me);
-  const zpull = zonePull(state, me);
-  const threat = {
-    x: dodge.x * 2.8 + escape.x * 3 + zpull.x,
-    y: dodge.y * 2.8 + escape.y * 3 + zpull.y,
+  const lasDod = laserDodge(state, me);
+  const zone = zonePull(state, me);
+  const avoid = {
+    x: dodge.x * 2 + escape.x * 2.5 + lasDod.x * 2.5 + zone.x,
+    y: dodge.y * 2 + escape.y * 2.5 + lasDod.y * 2.5 + zone.y,
   };
 
-  const enemies = state.players.filter(p => p.id !== me.id && p.alive);
-  const aliveCount = enemies.length + 1;
-  const target = pickTarget(state, me);
-  const items = wantItems(state, me);
+  const item = bestItem(state, me);
+  const nearCount = nearbyEnemies(state, me, 300);
+  const lowHp = me.hp + me.shield < 50;
+  const veryLowHp = me.hp < 30;
 
-  // choose weapon: gun primary, launcher when gun nearly dry, knife fallback
+  // ---- Weapon selection ----
+  const canGun = me.hasGun && me.ammo.gun > 0;
+  const canLauncher = me.hasLauncher && me.ammo.launcher > 0;
+  const canLaser = me.hasLaser && me.ammo.laser > 0 && me.cooldowns.laser <= 0;
+
   let weapon = 'knife';
-  if (me.hasGun && me.ammo.gun > 0) weapon = 'gun';
-  if ((!me.hasGun || me.ammo.gun <= 3) && me.hasLauncher && me.ammo.launcher > 0) weapon = 'launcher';
+  if (canGun) weapon = 'gun';
+  if (canLauncher && enemy && dist(enemy, me) > 150 && dist(enemy, me) < 600 && me.ammo.gun <= 5) weapon = 'launcher';
+  if (canLaser && enemy && dist(enemy, me) > 300 && dist(enemy, me) < 800 && !veryLowHp) weapon = 'laser';
 
-  // Spawn invulnerability: reposition, do NOT attack (attack ends invuln early)
-  if (me.invulnerable > 0.2) {
-    const goal = items[0] || state.zone;
-    const dir = pathTo(me, goal);
-    return { move: norm({ x: dir.x + threat.x, y: dir.y + threat.y }), weapon: 'knife', attack: false };
+  // ---- Retreatment logic ----
+  // If very low HP and a gun enemy is nearby, disengage.
+  if (veryLowHp && enemy && dist(enemy, me) < 350 && me.invulnerable <= 0) {
+    // Run away from enemy, toward item or zone centre.
+    const away = enemy ? normalize({ x: me.x - enemy.x, y: me.y - enemy.y }) : { x: 0, y: 0 };
+    const goal = item && dist(item, me) < dist(enemy, me) ? item : state.zone;
+    const toward = pathTo(me, goal);
+    const move = normalize({
+      x: away.x * 1.5 + toward.x * 0.8 + avoid.x,
+      y: away.y * 1.5 + toward.y * 0.8 + avoid.y,
+    });
+    // Throw smoke to break line of sight if multiple enemies near.
+    let throwSmoke = false;
+    if (me.smokeGrenades > 0 && me.cooldowns.throw <= 0 && nearCount >= 2) throwSmoke = true;
+    // Plant a mine behind us if chased.
+    const plantMine = me.mines > 0 && dist(enemy, me) < 150 && me.cooldowns.mine <= 0 &&
+      !state.mines.some(m => dist(m, me) < 120);
+    // Knife anyone who gets on top of us while we run.
+    const knifeReach = 2 * rules.player.radius + rules.knife.reach;
+    const kAngle = Math.atan2(enemy.y - me.y, enemy.x - me.x);
+    const knifeHit = dist(enemy, me) <= knifeReach && Math.abs(angleDiff(kAngle, me.facing)) < 0.6;
+    return {
+      move,
+      aim: kAngle,
+      attack: knifeHit,
+      weapon: 'knife',
+      throw: throwSmoke ? 'smoke' : undefined,
+      throwDistance: throwSmoke ? 180 : undefined,
+      plantMine,
+    };
   }
 
-  // No enemies left alive: collect loot and sit in the zone.
-  if (!target) {
-    const goal = items[0] || state.zone;
-    const dir = pathTo(me, goal);
-    return { move: norm({ x: dir.x + threat.x, y: dir.y + threat.y }), weapon };
+  // ---- No enemy ----
+  if (!enemy) {
+    const goal = item || state.zone;
+    const toward = pathTo(me, goal);
+    return {
+      move: normalize({ x: toward.x + avoid.x, y: toward.y + avoid.y }),
+      weapon,
+    };
   }
 
-  const d = dist(target, me);
-  const toward = norm({ x: target.x - me.x, y: target.y - me.y });
-  const knifeReach = 2 * rules.player.radius + rules.knife.reach; // 68
+  // ---- Have enemy: engage or kite ----
+  const d = dist(enemy, me);
+  const toward = normalize({ x: enemy.x - me.x, y: enemy.y - me.y });
 
-  const myTotal = me.hp + me.shield;
-  const enemyTotal = target.hp + target.shield;
-
-  // Unarmed: rush a gun, knife anyone who gets in our face.
-  if (weapon === 'knife') {
-    if (d < knifeReach + 25 && target.visible) {
-      const aim = Math.atan2(target.y - me.y, target.x - me.x);
-      const swing = d <= knifeReach && Math.abs(angleDiff(aim, me.facing)) < 0.9 && me.cooldowns.knife <= 0;
-      return {
-        move: norm({ x: toward.x + threat.x, y: toward.y + threat.y }),
-        aim, attack: swing, weapon: 'knife',
-      };
-    }
-    const goal = items[0] || state.zone;
-    const dir = pathTo(me, goal);
-    return { move: norm({ x: dir.x + threat.x, y: dir.y + threat.y }), weapon: 'knife' };
-  }
-
-  // Disengage when outmatched or low: heal up, don't trade 1-for-1.
-  const needHeal = myTotal < 60;
-  const unfavorable = myTotal < enemyTotal * 0.6 && myTotal < 90 && d > 150;
-  if (needHeal || unfavorable) {
-    const healItem = items.find(it => it.type === 'health' || it.type === 'shield' || it.type === 'life');
-    if (healItem) {
-      const dir = pathTo(me, healItem);
-      return { move: norm({ x: dir.x + threat.x, y: dir.y + threat.y }), weapon };
-    }
-    const dir = pathTo(me, state.zone);
-    return { move: norm({ x: dir.x + threat.x, y: dir.y + threat.y }), weapon };
-  }
-
-  // Armed combat: engagement ranges tighten late / 1v1.
-  // Inertia means we can't instantly back off, so keep a bit more breathing room.
-  const aggressive = aliveCount <= 2 || state.time > 130;
-  const idealDist = weapon === 'gun' ? (aggressive ? 240 : 320) : 220;
-  const minDist = weapon === 'gun' ? (aggressive ? 180 : 230) : 140;
-  const maxDist = weapon === 'gun' ? 700 : 500;
+  // Desired range depends on weapon.
+  let desiredMin = 260, desiredMax = 400;
+  if (weapon === 'launcher') { desiredMin = 200; desiredMax = 600; }
+  if (weapon === 'laser') { desiredMin = 350; desiredMax = 800; }
+  if (weapon === 'knife') { desiredMin = 0; desiredMax = 70; }
 
   let radial = 0;
-  if (d > maxDist) radial = 1;
-  else if (d < minDist) radial = -1;
+  if (d > desiredMax) radial = 1;
+  else if (d < desiredMin) radial = -1;
 
-  // Strafe perpendicular to the line of fire.
-  // Inertia costs ~0.3s to accelerate and ~0.6s to reverse, so hold a strafe
-  // direction for a long time; flipping constantly leaves us a slow, easy target.
+  // Strafing.
   if (state.time >= strafeFlipAt) {
     strafeSign = Math.random() < 0.5 ? -1 : 1;
-    strafeFlipAt = state.time + 1.5 + Math.random() * 1.0;
-    stuckTime = 0;
+    strafeFlipAt = state.time + 0.7 + Math.random() * 0.6;
   }
-  // Only treat low speed as "stuck on a wall" after it persists ~0.4s; right after
-  // a strafe flip we're naturally slow while accelerating the other way.
-  const spd = Math.hypot(me.vx, me.vy);
-  if (spd < 50 && state.time > 0.3) {
-    stuckTime += 1 / 30;
-    if (stuckTime > 0.4) { strafeSign = -strafeSign; stuckTime = 0; }
-  } else {
-    stuckTime = 0;
-  }
+  if (Math.hypot(me.vx, me.vy) < 40 && state.time > 0.3) strafeSign = -strafeSign;
   const strafe = { x: -toward.y * strafeSign, y: toward.x * strafeSign };
 
-  // Detour for a nearby useful item.
-  const nearbyItem = items.find(it => dist(it, me) < 130 && walkable(me, it));
-  const detour = nearbyItem ? norm({ x: nearbyItem.x - me.x, y: nearbyItem.y - me.y }) : { x: 0, y: 0 };
+  // Grab a nearby item if it doesn't detour too much.
+  let detour = { x: 0, y: 0 };
+  if (item && dist(item, me) < 180 && walkable(me, item) && !lowHp) {
+    detour = normalize({ x: item.x - me.x, y: item.y - me.y });
+  }
+  if (lowHp && item && (item.type === 'health' || item.type === 'shield')) {
+    detour = normalize({ x: item.x - me.x, y: item.y - me.y });
+    radial = -1; // run to item
+  }
 
-  const losPad = weapon === 'gun' ? rules.gun.bulletRadius : rules.launcher.grenadeRadius;
-  const canSee = target.visible && los(me, target, losPad);
-
+  // No line of sight: walk around wall.
+  const inSight = clearShot(me, enemy, rules.gun.bulletRadius);
   let move;
-  if (!canSee) {
-    const around = pathTo(me, target);
-    move = norm({ x: around.x + threat.x, y: around.y + threat.y });
+  if (!inSight && weapon !== 'knife') {
+    const around = pathTo(me, enemy);
+    move = normalize({ x: around.x + avoid.x, y: around.y + avoid.y });
   } else {
-    move = norm({
-      x: toward.x * radial + strafe.x * 0.8 + detour.x + threat.x,
-      y: toward.y * radial + strafe.y * 0.8 + detour.y + threat.y,
+    move = normalize({
+      x: toward.x * radial + strafe.x * 0.7 + detour.x * 0.8 + avoid.x,
+      y: toward.y * radial + strafe.y * 0.7 + detour.y * 0.8 + avoid.y,
     });
   }
 
-  // Lead the target: aim where they will be when the projectile arrives.
-  const speed = weapon === 'gun' ? rules.gun.bulletSpeed : rules.launcher.grenadeSpeed;
-  const flight = d / speed;
-  const lead = { x: target.x + target.vx * flight, y: target.y + target.vy * flight };
+  // ---- Aim with lead ----
+  const bulletSpeed = weapon === 'gun' ? rules.gun.bulletSpeed : rules.launcher.grenadeSpeed;
+  const flight = d / bulletSpeed;
+  const lead = { x: enemy.x + enemy.vx * flight, y: enemy.y + enemy.vy * flight };
   const aim = Math.atan2(lead.y - me.y, lead.x - me.x);
-  const onTarget = Math.abs(angleDiff(aim, me.facing)) < 0.12;
+  const onTarget = Math.abs(angleDiff(aim, me.facing)) < 0.1;
+  const fresh = enemy.visible || enemy.seenAgo < 0.4;
 
+  // ---- Attack ----
   let attack = false;
-  const fresh = target.visible || target.seenAgo < 0.5;
-  if (me.weapon === weapon && onTarget && fresh && target.invulnerable <= 0 && me.cooldowns.switch <= 0) {
+  if (me.weapon === weapon && me.cooldowns.switch <= 0 && onTarget && fresh) {
     if (weapon === 'gun') {
-      attack = d < rules.gun.range * 0.85 && los(me, lead, rules.gun.bulletRadius);
-    } else {
-      const safe = rules.launcher.blastRadius + rules.player.radius + 40;
-      attack = d > safe && d < rules.launcher.range && los(me, lead, rules.launcher.grenadeRadius);
+      attack = d < rules.gun.range * 0.85 && clearShot(me, lead, rules.gun.bulletRadius);
+    } else if (weapon === 'launcher') {
+      const safe = rules.launcher.blastRadius + rules.player.radius + 50;
+      attack = d > safe && d < rules.launcher.range * 0.95 && clearShot(me, lead, rules.launcher.grenadeRadius);
+    } else if (weapon === 'laser') {
+      // Only fire if the target is roughly on a straight line and we won't suicide.
+      attack = d < rules.laser.range && clearShot(me, lead, rules.laser.beamRadius + rules.player.radius);
+    } else if (weapon === 'knife') {
+      const reach = 2 * rules.player.radius + rules.knife.reach;
+      attack = d <= reach;
     }
   }
 
-  // Drop a mine when someone is chasing us down.
-  const plantMine = me.mines > 0 && d < 110 && me.cooldowns.mine <= 0 &&
-    !state.mines.some(m => dist(m, me) < 150);
+  // ---- Tactical items ----
+  let throwCmd = undefined;
+  let throwDist = undefined;
+  // Gas grenade: if enemy is fleeing and we have line, toss on their escape path.
+  if (me.gasGrenades > 0 && me.cooldowns.throw <= 0 && enemy && d > 120 && d < 300 &&
+      (enemy.hp + enemy.shield) < 80 && me.hp > 50) {
+    throwCmd = 'gas';
+    throwDist = Math.min(250, d);
+  }
+  // Smoke: if we're being swarmed and need to escape.
+  if (me.smokeGrenades > 0 && me.cooldowns.throw <= 0 && nearCount >= 2 && lowHp) {
+    throwCmd = 'smoke';
+    throwDist = 150;
+  }
 
-  return { move, aim, attack, weapon, plantMine };
+  // Mine: if enemy is chasing us (they're close and we're kiting).
+  const plantMine = me.mines > 0 && d < 130 && d > 60 && me.cooldowns.mine <= 0 &&
+    !state.mines.some(m => dist(m, me) < 130) && enemy && enemy.weapon !== 'knife';
+
+  return {
+    move,
+    aim,
+    attack,
+    weapon,
+    throw: throwCmd,
+    throwDistance: throwDist,
+    plantMine,
+  };
 }

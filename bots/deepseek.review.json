@@ -1,8 +1,8 @@
 {
   "version": 1,
   "file": "deepseek.js",
-  "sourceHash": "102202846acc66",
-  "reviewedAt": "2026-09-28T09:44:16.664Z",
+  "sourceHash": "12d0fc740dc4d4",
+  "reviewedAt": "2026-09-28T13:32:52.284Z",
   "static": {
     "ok": true,
     "findings": []
@@ -11,23 +11,23 @@
     "model": "jev-1.13.0",
     "risks": {
       "outsideAccess": 0.03,
-      "globalTampering": 0.05,
+      "globalTampering": 0.06,
       "backgroundWork": 0.03,
-      "obfuscation": 0.05,
+      "obfuscation": 0.08,
       "actionExploit": 0.03,
-      "reviewerInjection": 0.05
+      "reviewerInjection": 0.03
     },
     "conformance": {
       "choice": "follows",
-      "confidence": 0.92,
-      "follows": 0.95
+      "confidence": 0.96,
+      "follows": 0.98
     },
     "quality": {
-      "score": 2.97,
-      "confidence": 0.97,
+      "score": 2.99,
+      "confidence": 0.99,
       "max": 3
     },
-    "inputTokens": 6596
+    "inputTokens": 6948
   },
   "verdict": "pass",
   "reasons": []
