@@ -5,12 +5,14 @@ export const meta = { name: 'Gunner', author: 'Harena examples' };
 
 let rules = null;
 let walls = [];
+let mapSize = { w: 0, h: 0 };
 let strafeSign = 1;
 let strafeFlipAt = 0;
 
 export function init(info) {
   rules = info.rules;
   walls = info.map.walls;
+  mapSize = { w: info.map.width, h: info.map.height };
 }
 
 // ---------- geometry helpers ----------
@@ -54,6 +56,41 @@ function segmentHitsRect(x0, y0, x1, y1, r, pad) {
 
 function clearShot(a, b, pad) {
   return !walls.some((w) => segmentHitsRect(a.x, a.y, b.x, b.y, w, pad));
+}
+
+// ---------- navigation ----------
+
+// Can we walk the straight line from a to b without clipping a wall?
+function walkable(a, b) {
+  return !walls.some((w) => segmentHitsRect(a.x, a.y, b.x, b.y, w, rules.player.radius - 2));
+}
+
+// Unit direction for walking toward `goal`. If a wall is in the way, head for the corner of
+// that wall (pushed out past our radius) that makes the shortest trip around it.
+function pathTo(me, goal) {
+  const straight = normalize({ x: goal.x - me.x, y: goal.y - me.y });
+  if (walkable(me, goal)) return straight;
+  const r = rules.player.radius;
+  const blocker = walls
+    .filter((w) => segmentHitsRect(me.x, me.y, goal.x, goal.y, w, r - 2))
+    .sort((a, b) => dist(me, { x: a.x + a.w / 2, y: a.y + a.h / 2 }) - dist(me, { x: b.x + b.w / 2, y: b.y + b.h / 2 }))[0];
+  const m = r + 10;
+  const corners = [
+    { x: blocker.x - m, y: blocker.y - m },
+    { x: blocker.x + blocker.w + m, y: blocker.y - m },
+    { x: blocker.x - m, y: blocker.y + blocker.h + m },
+    { x: blocker.x + blocker.w + m, y: blocker.y + blocker.h + m },
+  ].filter((c) => c.x > r && c.y > r && c.x < mapSize.w - r && c.y < mapSize.h - r && dist(c, me) > 8);
+  let best = null;
+  let bestCost = Infinity;
+  for (const c of corners) {
+    const cost = dist(me, c) + dist(c, goal) + (walkable(me, c) ? 0 : 1000);
+    if (cost < bestCost) {
+      bestCost = cost;
+      best = c;
+    }
+  }
+  return best ? normalize({ x: best.x - me.x, y: best.y - me.y }) : straight;
 }
 
 // ---------- threat avoidance ----------
@@ -102,8 +139,14 @@ function mineEscape(state, me) {
   return { x: dx, y: dy };
 }
 
-// Zone radius `t` seconds from now (it shrinks linearly between its start and end).
+// Zone radius `t` seconds from now: it shrinks linearly to finalRadius, holds, then
+// collapses linearly to 0.
 function zoneRadiusIn(zone, t) {
+  if (zone.collapseStartsIn !== null && t >= zone.collapseStartsIn) {
+    const collapseTime = zone.collapseEndsIn - zone.collapseStartsIn;
+    const from = zone.collapseStartsIn > 0 ? zone.finalRadius : zone.radius;
+    return collapseTime <= 0 || t >= zone.collapseEndsIn ? 0 : from * (1 - (t - zone.collapseStartsIn) / collapseTime);
+  }
   const shrinkTime = zone.shrinkEndsIn - zone.shrinkStartsIn;
   if (shrinkTime <= 0) return zone.radius;
   const elapsed = Math.max(0, t - zone.shrinkStartsIn);
@@ -118,7 +161,8 @@ function zonePull(state, me) {
   const slack = zoneRadiusIn(zone, 3) - rules.player.radius - 30 - d;
   if (slack > 0 || d < 1e-6) return { x: 0, y: 0 };
   const k = Math.min(3, 0.5 - slack / 50);
-  return { x: ((zone.x - me.x) / d) * k, y: ((zone.y - me.y) / d) * k };
+  const dir = pathTo(me, zone);
+  return { x: dir.x * k, y: dir.y * k };
 }
 
 // ---------- decision ----------
@@ -171,7 +215,7 @@ export function decide(state) {
     const wanted = items[0];
     if (enemy && (!wanted || dist(enemy, me) < reach + 30)) {
       const angle = Math.atan2(enemy.y - me.y, enemy.x - me.x);
-      const toward = normalize({ x: enemy.x - me.x, y: enemy.y - me.y });
+      const toward = pathTo(me, enemy);
       return {
         move: normalize({ x: toward.x + avoid.x, y: toward.y + avoid.y }),
         aim: angle,
@@ -180,7 +224,7 @@ export function decide(state) {
       };
     }
     if (wanted) {
-      const toward = normalize({ x: wanted.x - me.x, y: wanted.y - me.y });
+      const toward = pathTo(me, wanted);
       return { move: normalize({ x: toward.x + avoid.x, y: toward.y + avoid.y }), aim: Math.atan2(toward.y, toward.x), weapon: 'knife' };
     }
     return { move: normalize(avoid), weapon: 'knife' };
@@ -188,7 +232,7 @@ export function decide(state) {
 
   if (!enemy) {
     const wanted = items[0];
-    const toward = wanted ? normalize({ x: wanted.x - me.x, y: wanted.y - me.y }) : { x: 0, y: 0 };
+    const toward = wanted ? pathTo(me, wanted) : { x: 0, y: 0 };
     return { move: normalize({ x: toward.x + avoid.x, y: toward.y + avoid.y }), weapon };
   }
 
@@ -203,13 +247,18 @@ export function decide(state) {
   // Bumped into something? Flip the strafe direction.
   if (Math.hypot(me.vx, me.vy) < 40 && state.time > 0.3) strafeSign = -strafeSign;
   const strafe = { x: -toward.y * strafeSign, y: toward.x * strafeSign };
-  const nearbyItem = items.find((it) => dist(it, me) < 150);
+  const nearbyItem = items.find((it) => dist(it, me) < 150 && walkable(me, it));
   const detour = nearbyItem ? normalize({ x: nearbyItem.x - me.x, y: nearbyItem.y - me.y }) : { x: 0, y: 0 };
 
-  const move = normalize({
-    x: toward.x * radial + strafe.x * 0.7 + detour.x + avoid.x,
-    y: toward.y * radial + strafe.y * 0.7 + detour.y + avoid.y,
-  });
+  // No line of fire: walk around the wall instead of strafing behind it.
+  const inSight = clearShot(me, enemy, rules.gun.bulletRadius);
+  const around = inSight ? null : pathTo(me, enemy);
+  const move = around
+    ? normalize({ x: around.x + avoid.x, y: around.y + avoid.y })
+    : normalize({
+      x: toward.x * radial + strafe.x * 0.7 + detour.x + avoid.x,
+      y: toward.y * radial + strafe.y * 0.7 + detour.y + avoid.y,
+    });
 
   // Aim where the enemy will be when the projectile arrives.
   const speed = weapon === 'gun' ? rules.gun.bulletSpeed : rules.launcher.grenadeSpeed;

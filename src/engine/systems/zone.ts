@@ -5,7 +5,8 @@ import { applyDamage } from './combat.ts';
 
 /**
  * The safe zone: a circle around the map centre. It covers the whole map until
- * `zone.shrinkStart`, then its radius shrinks linearly to `zone.finalRadius`.
+ * `zone.shrinkStart`, shrinks linearly to `zone.finalRadius`, holds for
+ * `zone.holdTime`, then collapses linearly to 0 over `zone.collapseDuration`.
  * Everything here is derived from the tick, so the zone adds no simulation state.
  */
 export interface Zone {
@@ -17,6 +18,9 @@ export interface Zone {
   finalRadius: number;
   startTick: number;
   endTick: number;
+  /** Collapse to radius 0 (both equal Infinity when the zone never collapses). */
+  collapseStartTick: number;
+  collapseEndTick: number;
 }
 
 export function zoneEnabled(config: GameConfig): boolean {
@@ -30,10 +34,17 @@ export function zoneAt(state: GameState, tick: number = state.tick): Zone {
   const startRadius = Math.sqrt(x * x + y * y);
   const startTick = secondsToTicks(config.zone.shrinkStart, config);
   const endTick = startTick + secondsToTicks(config.zone.shrinkDuration, config);
-  if (!zoneEnabled(config)) return { x, y, radius: startRadius, startRadius, finalRadius: startRadius, startTick, endTick };
+  const collapses = config.zone.collapseDuration > 0;
+  const collapseStartTick = collapses ? endTick + secondsToTicks(config.zone.holdTime, config) : Infinity;
+  const collapseEndTick = collapses ? collapseStartTick + secondsToTicks(config.zone.collapseDuration, config) : Infinity;
+  const base = { x, y, startRadius, startTick, endTick, collapseStartTick, collapseEndTick };
+  if (!zoneEnabled(config)) return { ...base, radius: startRadius, finalRadius: startRadius, collapseStartTick: Infinity, collapseEndTick: Infinity };
   const finalRadius = Math.max(0, Math.min(config.zone.finalRadius, startRadius));
-  const f = tick <= startTick ? 0 : tick >= endTick ? 1 : (tick - startTick) / (endTick - startTick);
-  return { x, y, radius: startRadius + (finalRadius - startRadius) * f, startRadius, finalRadius, startTick, endTick };
+  const progress = (from: number, to: number) => (tick <= from ? 0 : tick >= to ? 1 : (tick - from) / (to - from));
+  const radius = tick < collapseStartTick
+    ? startRadius + (finalRadius - startRadius) * progress(startTick, endTick)
+    : finalRadius * (1 - progress(collapseStartTick, collapseEndTick));
+  return { ...base, radius, finalRadius };
 }
 
 /** True if (x, y) is at least `margin` inside the zone edge. */

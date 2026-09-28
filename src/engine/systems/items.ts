@@ -134,7 +134,9 @@ export function findItemSpot(state: GameState): { x: number; y: number } | null 
 export function updateItemSpawner(state: GameState): void {
   if (state.itemSpawnTimer > 0) return;
   state.itemSpawnTimer = secondsToTicks(state.config.items.spawnInterval, state.config);
-  const spawned = state.items.filter((i) => i.origin === 'random').length;
+  // Items left outside a shrinking zone don't count, so fresh ones keep appearing inside it.
+  const zone = zoneShrinking(state) ? zoneAt(state) : null;
+  const spawned = state.items.filter((i) => i.origin === 'random' && (!zone || insideZone(zone, i.x, i.y))).length;
   if (spawned >= state.config.items.maxOnMap) return;
   const type = state.rng.items.weighted(state.config.items.weights, ITEM_TYPES);
   if (!type) return;

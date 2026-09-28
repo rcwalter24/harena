@@ -221,18 +221,21 @@ Spawn weights: {{derived.itemWeights}}.
 
 ### 5.12 Safe zone
 - The safe zone is a circle around the **map centre**, described every tick in `state.zone`.
-  Until {{zone.shrinkStart}} s it covers the whole map. It then shrinks linearly for {{zone.shrinkDuration}} s down to a
-  radius of **{{zone.finalRadius}} u**, and stays that size.
+  Its radius follows a fixed schedule:
+  1. Until {{zone.shrinkStart}} s it covers the whole map.
+  2. It shrinks linearly for {{zone.shrinkDuration}} s down to **{{zone.finalRadius}} u** (`finalRadius`).
+  3. It holds that size for {{zone.holdTime}} s.
+  4. It **collapses** linearly to radius 0 over {{zone.collapseDuration}} s, and stays closed. From then on
+     everyone takes zone damage, so a match cannot stall at the end.
 - At every whole second of match time, each living player whose **centre** is outside the zone
   takes **{{zone.damagePerSecond}} damage**. Shield absorbs it first, and invulnerability blocks it.
 - Zone damage counts as noise, so it reveals a player hiding in a bush outside the zone
   ([§5.11](#511-bushes)).
 - Dying to the zone gives nobody the kill. In `state.events` zone damage is a `hit` with
   `weapon: 'zone'` and `attackerId` equal to the damaged player's own id.
-- The radius `t` seconds from now is
-  `radius - (radius - finalRadius) * min(1, max(0, t - shrinkStartsIn) / (shrinkEndsIn - shrinkStartsIn))`
-  (just `radius` once `shrinkEndsIn` is 0). A point is inside if
-  `(x - zone.x)² + (y - zone.y)² <= radius²`.
+- A point is inside if `(x - zone.x)² + (y - zone.y)² <= radius²`. The countdowns
+  `shrinkStartsIn`, `shrinkEndsIn`, `collapseStartsIn` and `collapseEndsIn` let you predict
+  the radius; `zoneRadiusIn` in the example bot ([§12](#12-complete-example-bot)) does it.
 - `zone.damagePerSecond` is `0` when a match turns the zone off; then it never hurts.
 
 ---
@@ -336,10 +339,13 @@ Your bot receives the map in `info.map` and should work on any of them.
 - **Dodge sideways.** Bullets are only about {{derived.bulletVsPlayer}}× faster than you, so stepping perpendicular to an
   incoming bullet's path usually avoids it.
 - **Check line of sight** against `info.map.walls` before shooting (a segment-vs-rectangle test).
+- **Walk around walls.** Walking straight at a target behind a wall pins you against it
+  forever (a common way for bots to stall). If the straight path is blocked, head for a corner
+  of the blocking wall first; `pathTo` in the example bot shows a simple way.
 - **Detect being stuck.** If you ask to move but `self.vx/vy` is near 0, a wall is in the way.
-  Walking straight at a target behind a wall gets you nowhere; go around it.
 - **Mind the zone.** Head for the centre before `state.zone` reaches you. Bots that hide or wait
   for the time limit get pushed out, take damage every second, and are revealed in bushes.
+  Once it collapses, the fight is on: whoever wins before the damage adds up takes the match.
 - Keep `decide` cheap. It runs {{tickRate}} times per second, next to up to {{derived.maxOpponents}} other bots.
 
 Useful helpers:

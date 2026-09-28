@@ -55,7 +55,7 @@ export function decide(state) {
   `info.timeLimit`) runs out first, survivors are ranked by lives left, then by hp + shield.
   Eliminated players rank below all survivors, and a later elimination ranks higher.
   Exact ties share a rank.
-- **The safe zone shrinks.** From 30 s the playable area closes in on the map centre, and
+- **The safe zone shrinks.** From 45 s the playable area closes in on the map centre, and
   standing outside it hurts ([§5.12](#512-safe-zone)). Hiding or waiting out the clock does not work.
 - You see the whole map and everything on it. The only exception is enemies hiding in
   **bushes** ([§5.11](#511-bushes)).
@@ -221,18 +221,21 @@ Spawn weights: ammo 30, shield 25, health 25, gun 12, life 8, launcher 6, mines 
 
 ### 5.12 Safe zone
 - The safe zone is a circle around the **map centre**, described every tick in `state.zone`.
-  Until 30 s it covers the whole map. It then shrinks linearly for 60 s down to a
-  radius of **200 u**, and stays that size.
+  Its radius follows a fixed schedule:
+  1. Until 45 s it covers the whole map.
+  2. It shrinks linearly for 105 s down to **200 u** (`finalRadius`).
+  3. It holds that size for 15 s.
+  4. It **collapses** linearly to radius 0 over 15 s, and stays closed. From then on
+     everyone takes zone damage, so a match cannot stall at the end.
 - At every whole second of match time, each living player whose **centre** is outside the zone
   takes **10 damage**. Shield absorbs it first, and invulnerability blocks it.
 - Zone damage counts as noise, so it reveals a player hiding in a bush outside the zone
   ([§5.11](#511-bushes)).
 - Dying to the zone gives nobody the kill. In `state.events` zone damage is a `hit` with
   `weapon: 'zone'` and `attackerId` equal to the damaged player's own id.
-- The radius `t` seconds from now is
-  `radius - (radius - finalRadius) * min(1, max(0, t - shrinkStartsIn) / (shrinkEndsIn - shrinkStartsIn))`
-  (just `radius` once `shrinkEndsIn` is 0). A point is inside if
-  `(x - zone.x)² + (y - zone.y)² <= radius²`.
+- A point is inside if `(x - zone.x)² + (y - zone.y)² <= radius²`. The countdowns
+  `shrinkStartsIn`, `shrinkEndsIn`, `collapseStartsIn` and `collapseEndsIn` let you predict
+  the radius; `zoneRadiusIn` in the example bot ([§12](#12-complete-example-bot)) does it.
 - `zone.damagePerSecond` is `0` when a match turns the zone off; then it never hurts.
 
 ---
@@ -398,12 +401,16 @@ export interface ZoneView {
   y: number;
   /** Current radius. You are outside if the distance from (x, y) to your centre is greater. */
   radius: number;
-  /** Radius once shrinking has finished. */
+  /** Radius at the end of the first shrink; the zone holds there, then collapses to 0. */
   finalRadius: number;
   /** Seconds until shrinking starts (0 once it has started). */
   shrinkStartsIn: number;
-  /** Seconds until the final radius is reached (0 once reached). The radius shrinks linearly. */
+  /** Seconds until finalRadius is reached (0 once reached). The radius shrinks linearly. */
   shrinkEndsIn: number;
+  /** Seconds until the collapse from finalRadius toward 0 starts (0 once started; null if it never collapses). */
+  collapseStartsIn: number | null;
+  /** Seconds until the radius reaches 0 (0 once reached; null if it never collapses). Linear. */
+  collapseEndsIn: number | null;
   /** Damage per second outside the zone. 0 means the zone is off in this match. */
   damagePerSecond: number;
 }
@@ -633,9 +640,11 @@ Every value below is also available at runtime as `info.rules.<path>`, for examp
 
 | `info.rules.…` | Value | Unit | Meaning |
 |---|---|---|---|
-| `zone.shrinkStart` | 30 | s | Match time at which the safe zone starts shrinking (before that it covers the whole map). |
-| `zone.shrinkDuration` | 60 | s | The zone radius shrinks linearly to its final size over this long. |
-| `zone.finalRadius` | 200 | u | Radius of the zone once it has finished shrinking. Its centre is the map centre. |
+| `zone.shrinkStart` | 45 | s | Match time at which the safe zone starts shrinking (before that it covers the whole map). |
+| `zone.shrinkDuration` | 105 | s | The zone radius shrinks linearly to its final size over this long. |
+| `zone.finalRadius` | 200 | u | Radius at the end of the first shrink. Its centre is the map centre. |
+| `zone.holdTime` | 15 | s | The zone then stays at finalRadius for this long. |
+| `zone.collapseDuration` | 15 | s | Then it shrinks linearly from finalRadius to 0 over this long (0 = it never collapses). |
 | `zone.damagePerSecond` | 10 | hp | Damage taken at every whole second of match time while your centre is outside the zone (0 = zone off). |
 
 **respawn**
@@ -709,10 +718,13 @@ Your bot receives the map in `info.map` and should work on any of them.
 - **Dodge sideways.** Bullets are only about 2.3× faster than you, so stepping perpendicular to an
   incoming bullet's path usually avoids it.
 - **Check line of sight** against `info.map.walls` before shooting (a segment-vs-rectangle test).
+- **Walk around walls.** Walking straight at a target behind a wall pins you against it
+  forever (a common way for bots to stall). If the straight path is blocked, head for a corner
+  of the blocking wall first; `pathTo` in the example bot shows a simple way.
 - **Detect being stuck.** If you ask to move but `self.vx/vy` is near 0, a wall is in the way.
-  Walking straight at a target behind a wall gets you nowhere; go around it.
 - **Mind the zone.** Head for the centre before `state.zone` reaches you. Bots that hide or wait
   for the time limit get pushed out, take damage every second, and are revealed in bushes.
+  Once it collapses, the fight is on: whoever wins before the damage adds up takes the match.
 - Keep `decide` cheap. It runs 30 times per second, next to up to 7 other bots.
 
 Useful helpers:
@@ -758,12 +770,14 @@ export const meta = { name: 'Gunner', author: 'Harena examples' };
 
 let rules = null;
 let walls = [];
+let mapSize = { w: 0, h: 0 };
 let strafeSign = 1;
 let strafeFlipAt = 0;
 
 export function init(info) {
   rules = info.rules;
   walls = info.map.walls;
+  mapSize = { w: info.map.width, h: info.map.height };
 }
 
 // ---------- geometry helpers ----------
@@ -807,6 +821,41 @@ function segmentHitsRect(x0, y0, x1, y1, r, pad) {
 
 function clearShot(a, b, pad) {
   return !walls.some((w) => segmentHitsRect(a.x, a.y, b.x, b.y, w, pad));
+}
+
+// ---------- navigation ----------
+
+// Can we walk the straight line from a to b without clipping a wall?
+function walkable(a, b) {
+  return !walls.some((w) => segmentHitsRect(a.x, a.y, b.x, b.y, w, rules.player.radius - 2));
+}
+
+// Unit direction for walking toward `goal`. If a wall is in the way, head for the corner of
+// that wall (pushed out past our radius) that makes the shortest trip around it.
+function pathTo(me, goal) {
+  const straight = normalize({ x: goal.x - me.x, y: goal.y - me.y });
+  if (walkable(me, goal)) return straight;
+  const r = rules.player.radius;
+  const blocker = walls
+    .filter((w) => segmentHitsRect(me.x, me.y, goal.x, goal.y, w, r - 2))
+    .sort((a, b) => dist(me, { x: a.x + a.w / 2, y: a.y + a.h / 2 }) - dist(me, { x: b.x + b.w / 2, y: b.y + b.h / 2 }))[0];
+  const m = r + 10;
+  const corners = [
+    { x: blocker.x - m, y: blocker.y - m },
+    { x: blocker.x + blocker.w + m, y: blocker.y - m },
+    { x: blocker.x - m, y: blocker.y + blocker.h + m },
+    { x: blocker.x + blocker.w + m, y: blocker.y + blocker.h + m },
+  ].filter((c) => c.x > r && c.y > r && c.x < mapSize.w - r && c.y < mapSize.h - r && dist(c, me) > 8);
+  let best = null;
+  let bestCost = Infinity;
+  for (const c of corners) {
+    const cost = dist(me, c) + dist(c, goal) + (walkable(me, c) ? 0 : 1000);
+    if (cost < bestCost) {
+      bestCost = cost;
+      best = c;
+    }
+  }
+  return best ? normalize({ x: best.x - me.x, y: best.y - me.y }) : straight;
 }
 
 // ---------- threat avoidance ----------
@@ -855,8 +904,14 @@ function mineEscape(state, me) {
   return { x: dx, y: dy };
 }
 
-// Zone radius `t` seconds from now (it shrinks linearly between its start and end).
+// Zone radius `t` seconds from now: it shrinks linearly to finalRadius, holds, then
+// collapses linearly to 0.
 function zoneRadiusIn(zone, t) {
+  if (zone.collapseStartsIn !== null && t >= zone.collapseStartsIn) {
+    const collapseTime = zone.collapseEndsIn - zone.collapseStartsIn;
+    const from = zone.collapseStartsIn > 0 ? zone.finalRadius : zone.radius;
+    return collapseTime <= 0 || t >= zone.collapseEndsIn ? 0 : from * (1 - (t - zone.collapseStartsIn) / collapseTime);
+  }
   const shrinkTime = zone.shrinkEndsIn - zone.shrinkStartsIn;
   if (shrinkTime <= 0) return zone.radius;
   const elapsed = Math.max(0, t - zone.shrinkStartsIn);
@@ -871,7 +926,8 @@ function zonePull(state, me) {
   const slack = zoneRadiusIn(zone, 3) - rules.player.radius - 30 - d;
   if (slack > 0 || d < 1e-6) return { x: 0, y: 0 };
   const k = Math.min(3, 0.5 - slack / 50);
-  return { x: ((zone.x - me.x) / d) * k, y: ((zone.y - me.y) / d) * k };
+  const dir = pathTo(me, zone);
+  return { x: dir.x * k, y: dir.y * k };
 }
 
 // ---------- decision ----------
@@ -924,7 +980,7 @@ export function decide(state) {
     const wanted = items[0];
     if (enemy && (!wanted || dist(enemy, me) < reach + 30)) {
       const angle = Math.atan2(enemy.y - me.y, enemy.x - me.x);
-      const toward = normalize({ x: enemy.x - me.x, y: enemy.y - me.y });
+      const toward = pathTo(me, enemy);
       return {
         move: normalize({ x: toward.x + avoid.x, y: toward.y + avoid.y }),
         aim: angle,
@@ -933,7 +989,7 @@ export function decide(state) {
       };
     }
     if (wanted) {
-      const toward = normalize({ x: wanted.x - me.x, y: wanted.y - me.y });
+      const toward = pathTo(me, wanted);
       return { move: normalize({ x: toward.x + avoid.x, y: toward.y + avoid.y }), aim: Math.atan2(toward.y, toward.x), weapon: 'knife' };
     }
     return { move: normalize(avoid), weapon: 'knife' };
@@ -941,7 +997,7 @@ export function decide(state) {
 
   if (!enemy) {
     const wanted = items[0];
-    const toward = wanted ? normalize({ x: wanted.x - me.x, y: wanted.y - me.y }) : { x: 0, y: 0 };
+    const toward = wanted ? pathTo(me, wanted) : { x: 0, y: 0 };
     return { move: normalize({ x: toward.x + avoid.x, y: toward.y + avoid.y }), weapon };
   }
 
@@ -956,13 +1012,18 @@ export function decide(state) {
   // Bumped into something? Flip the strafe direction.
   if (Math.hypot(me.vx, me.vy) < 40 && state.time > 0.3) strafeSign = -strafeSign;
   const strafe = { x: -toward.y * strafeSign, y: toward.x * strafeSign };
-  const nearbyItem = items.find((it) => dist(it, me) < 150);
+  const nearbyItem = items.find((it) => dist(it, me) < 150 && walkable(me, it));
   const detour = nearbyItem ? normalize({ x: nearbyItem.x - me.x, y: nearbyItem.y - me.y }) : { x: 0, y: 0 };
 
-  const move = normalize({
-    x: toward.x * radial + strafe.x * 0.7 + detour.x + avoid.x,
-    y: toward.y * radial + strafe.y * 0.7 + detour.y + avoid.y,
-  });
+  // No line of fire: walk around the wall instead of strafing behind it.
+  const inSight = clearShot(me, enemy, rules.gun.bulletRadius);
+  const around = inSight ? null : pathTo(me, enemy);
+  const move = around
+    ? normalize({ x: around.x + avoid.x, y: around.y + avoid.y })
+    : normalize({
+      x: toward.x * radial + strafe.x * 0.7 + detour.x + avoid.x,
+      y: toward.y * radial + strafe.y * 0.7 + detour.y + avoid.y,
+    });
 
   // Aim where the enemy will be when the projectile arrives.
   const speed = weapon === 'gun' ? rules.gun.bulletSpeed : rules.launcher.grenadeSpeed;

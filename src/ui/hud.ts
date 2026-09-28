@@ -66,7 +66,8 @@ export function zoneStatus(state: GameState): string {
   const zone = zoneAt(state);
   if (state.tick < zone.startTick) return ` · zone shrinks in ${Math.ceil((zone.startTick - state.tick) / state.config.tickRate)}s`;
   if (state.tick < zone.endTick) return ' · zone shrinking';
-  return ' · zone final';
+  if (state.tick < zone.collapseStartTick) return ` · zone collapses in ${Math.ceil((zone.collapseStartTick - state.tick) / state.config.tickRate)}s`;
+  return zone.radius > 0 ? ' · zone collapsing' : ' · zone closed';
 }
 
 /** Kill messages overlaid on the arena; each fades after a few seconds. */

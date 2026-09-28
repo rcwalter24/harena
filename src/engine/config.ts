@@ -71,6 +71,8 @@ export interface GameConfig {
     shrinkStart: number;
     shrinkDuration: number;
     finalRadius: number;
+    holdTime: number;
+    collapseDuration: number;
     damagePerSecond: number;
   };
   respawn: {
@@ -162,9 +164,11 @@ export const DEFAULT_CONFIG: GameConfig = {
     noiseRevealTime: 1,
   },
   zone: {
-    shrinkStart: 30,
-    shrinkDuration: 60,
+    shrinkStart: 45,
+    shrinkDuration: 105,
     finalRadius: 200,
+    holdTime: 15,
+    collapseDuration: 15,
     damagePerSecond: 10,
   },
   respawn: {
@@ -249,7 +253,9 @@ export const CONFIG_DOCS: Record<string, ConfigDoc> = {
   'bushes.noiseRevealTime': { unit: 's', description: 'A player in a bush stays visible this long after attacking or taking damage.' },
   'zone.shrinkStart': { unit: 's', description: 'Match time at which the safe zone starts shrinking (before that it covers the whole map).' },
   'zone.shrinkDuration': { unit: 's', description: 'The zone radius shrinks linearly to its final size over this long.' },
-  'zone.finalRadius': { unit: 'u', description: 'Radius of the zone once it has finished shrinking. Its centre is the map centre.' },
+  'zone.finalRadius': { unit: 'u', description: 'Radius at the end of the first shrink. Its centre is the map centre.' },
+  'zone.holdTime': { unit: 's', description: 'The zone then stays at finalRadius for this long.' },
+  'zone.collapseDuration': { unit: 's', description: 'Then it shrinks linearly from finalRadius to 0 over this long (0 = it never collapses).' },
   'zone.damagePerSecond': { unit: 'hp', description: 'Damage taken at every whole second of match time while your centre is outside the zone (0 = zone off).' },
   'respawn.delay': { unit: 's', description: 'Time between losing a life and respawning.' },
   'respawn.invulnerability': { unit: 's', description: 'Invulnerability after (re)spawning; ends early when you attack.' },

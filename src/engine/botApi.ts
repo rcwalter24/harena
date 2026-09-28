@@ -153,12 +153,16 @@ export interface ZoneView {
   y: number;
   /** Current radius. You are outside if the distance from (x, y) to your centre is greater. */
   radius: number;
-  /** Radius once shrinking has finished. */
+  /** Radius at the end of the first shrink; the zone holds there, then collapses to 0. */
   finalRadius: number;
   /** Seconds until shrinking starts (0 once it has started). */
   shrinkStartsIn: number;
-  /** Seconds until the final radius is reached (0 once reached). The radius shrinks linearly. */
+  /** Seconds until finalRadius is reached (0 once reached). The radius shrinks linearly. */
   shrinkEndsIn: number;
+  /** Seconds until the collapse from finalRadius toward 0 starts (0 once started; null if it never collapses). */
+  collapseStartsIn: number | null;
+  /** Seconds until the radius reaches 0 (0 once reached; null if it never collapses). Linear. */
+  collapseEndsIn: number | null;
   /** Damage per second outside the zone. 0 means the zone is off in this match. */
   damagePerSecond: number;
 }

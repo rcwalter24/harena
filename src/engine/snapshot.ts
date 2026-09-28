@@ -96,6 +96,8 @@ function zoneView(state: GameState): ZoneView {
     finalRadius: zone.finalRadius,
     shrinkStartsIn: on ? Math.max(0, zone.startTick - state.tick) / config.tickRate : 0,
     shrinkEndsIn: on ? Math.max(0, zone.endTick - state.tick) / config.tickRate : 0,
+    collapseStartsIn: Number.isFinite(zone.collapseStartTick) ? Math.max(0, zone.collapseStartTick - state.tick) / config.tickRate : null,
+    collapseEndsIn: Number.isFinite(zone.collapseEndTick) ? Math.max(0, zone.collapseEndTick - state.tick) / config.tickRate : null,
     damagePerSecond: on ? config.zone.damagePerSecond : 0,
   };
 }

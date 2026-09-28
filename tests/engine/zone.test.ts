@@ -9,8 +9,9 @@ import type { GameState } from '../../src/engine/types.ts';
 import { loadMaps } from '../../src/batch/batch.ts';
 import { place, testGame, testMap, vulnerable } from '../helpers.ts';
 
-// A fast zone: shrinks from 1 s to 3 s (ticks 30 → 90) down to radius 100 around (500, 500).
-const FAST = { zone: { shrinkStart: 1, shrinkDuration: 2, finalRadius: 100, damagePerSecond: 10 } };
+// A fast zone around (500, 500): shrinks from 1 s to 3 s (ticks 30 → 90) down to radius 100,
+// holds until 10 s (tick 300) and collapses to 0 by 12 s (tick 360).
+const FAST = { zone: { shrinkStart: 1, shrinkDuration: 2, finalRadius: 100, holdTime: 7, collapseDuration: 2, damagePerSecond: 10 } };
 
 function run(s: GameState, ticks: number): void {
   for (let i = 0; i < ticks; i++) step(s, []);
@@ -24,7 +25,10 @@ describe('safe zone', () => {
     expect(zoneAt(s, 30).radius).toBeCloseTo(corner);
     expect(zoneAt(s, 60).radius).toBeCloseTo((corner + 100) / 2);
     expect(zoneAt(s, 90).radius).toBe(100);
-    expect(zoneAt(s, 5000).radius).toBe(100);
+    expect(zoneAt(s, 300).radius).toBe(100);
+    expect(zoneAt(s, 330).radius).toBeCloseTo(50);
+    expect(zoneAt(s, 360).radius).toBe(0);
+    expect(zoneAt(s, 5000).radius).toBe(0);
     expect(zoneAt(s, 0)).toMatchObject({ x: 500, y: 500 });
   });
 
@@ -65,6 +69,23 @@ describe('safe zone', () => {
     expect(isVisibleTo(s, s.players[0], s.players[1])).toBe(true);
   });
 
+  it('never collapses when collapseDuration is 0', () => {
+    const s = testGame({ config: { zone: { ...FAST.zone, collapseDuration: 0 } } });
+    expect(zoneAt(s, 5000).radius).toBe(100);
+    s.tick = 5000;
+    expect(buildBotState(s).zone).toMatchObject({ collapseStartsIn: null, collapseEndsIn: null });
+  });
+
+  it('keeps hurting everyone once it has closed, so a stalemate cannot last', () => {
+    const s = testGame({ config: FAST });
+    s.tick = 360;
+    vulnerable(s);
+    place(s, 0, 520, 500);
+    place(s, 1, 480, 500);
+    step(s, []);
+    expect(s.players.map((p) => p.hp)).toEqual([90, 90]);
+  });
+
   it('is off when damagePerSecond is 0', () => {
     const s = testGame({ config: { zone: { ...FAST.zone, damagePerSecond: 0 } } });
     place(s, 1, 990, 990);
@@ -103,9 +124,22 @@ describe('safe zone', () => {
   it('is described to bots in seconds', () => {
     const s = testGame({ config: FAST });
     s.tick = 15;
-    expect(buildBotState(s).zone).toMatchObject({ x: 500, y: 500, finalRadius: 100, shrinkStartsIn: 0.5, shrinkEndsIn: 2.5, damagePerSecond: 10 });
+    expect(buildBotState(s).zone).toMatchObject({
+      x: 500, y: 500, finalRadius: 100, shrinkStartsIn: 0.5, shrinkEndsIn: 2.5, collapseStartsIn: 9.5, collapseEndsIn: 11.5, damagePerSecond: 10,
+    });
     s.tick = 100;
-    expect(buildBotState(s).zone).toMatchObject({ radius: 100, shrinkStartsIn: 0, shrinkEndsIn: 0 });
+    expect(buildBotState(s).zone).toMatchObject({ radius: 100, shrinkStartsIn: 0, shrinkEndsIn: 0, collapseStartsIn: 20 / 3 });
+    s.tick = 400;
+    expect(buildBotState(s).zone).toMatchObject({ radius: 0, collapseStartsIn: 0, collapseEndsIn: 0 });
+  });
+
+  it('keeps spawning items inside when old ones are stranded outside', () => {
+    const s = testGame({ config: { zone: { ...FAST.zone, finalRadius: 300 }, items: { maxOnMap: 3, spawnInterval: 0.1, firstSpawnDelay: 0 } } });
+    run(s, 25); // before shrinking: the cap fills up anywhere on the map
+    for (const it of s.items) [it.x, it.y] = [40, 40]; // strand them in a corner
+    run(s, 100);
+    const inside = s.items.filter((i) => insideZone(zoneAt(s), i.x, i.y));
+    expect(inside.length).toBe(3);
   });
 
   it('leaves room to respawn inside the final zone on every map', () => {
