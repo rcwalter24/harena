@@ -4,6 +4,7 @@ import { DEFAULT_CONFIG, mergeConfig } from '../../src/engine/config.ts';
 import { createGame } from '../../src/engine/game.ts';
 import { validateMap } from '../../src/engine/maps.ts';
 import { BotController } from '../../src/match/supervisor.ts';
+import { DummyController } from '../../src/match/dummies.ts';
 import { MatchRunner } from '../../src/match/runner.ts';
 import { createNodeWorker } from '../../src/sandbox/node/host.ts';
 
@@ -35,6 +36,25 @@ describe('example bots', () => {
     }
     const damage = state.players.reduce((sum, p) => sum + p.stats.damageDealt, 0);
     expect(damage).toBeGreaterThan(0);
+  }, 60_000);
+
+  it('gunner walks around a wall to reach a target behind it instead of dithering', async () => {
+    // From a replay: gunner stuck at a block's corner, the target standing still behind it.
+    const map = validateMap(JSON.parse(readFileSync(new URL('../../maps/blocks.json', import.meta.url), 'utf8')));
+    const config = mergeConfig(DEFAULT_CONFIG, { sandbox: { decideBudgetMs: 50, graceMs: 100 }, zone: { damagePerSecond: 0 }, items: { maxOnMap: 0 } });
+    const state = createGame({ map, config, seed: 'corner', timeLimit: 0, players: [{ name: 'gunner' }, { name: 'target' }] });
+    const [me, target] = state.players;
+    Object.assign(me, { x: 905, y: 313, hasGun: true, ammo: 11, weapon: 'gun' });
+    Object.assign(target, { x: 954, y: 189 });
+    state.items = [];
+    const bot = new BotController({
+      name: 'gunner', fileName: 'gunner.js', botSeed: 'corner::bot0', createWorker: createNodeWorker,
+      source: readFileSync(new URL('../../bots/gunner.js', import.meta.url), 'utf8'),
+    });
+    runner = new MatchRunner(state, [bot, new DummyController('idle')]);
+    await runner.init();
+    for (let i = 0; i < 150 && target.stats.damageTaken === 0; i++) await runner.tick();
+    expect(target.stats.damageTaken).toBeGreaterThan(0);
   }, 60_000);
 
   it('gunner picks up a gun and lands shots', async () => {

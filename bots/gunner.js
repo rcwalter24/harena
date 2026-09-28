@@ -66,7 +66,8 @@ function walkable(a, b) {
 }
 
 // Unit direction for walking toward `goal`. If a wall is in the way, head for the corner of
-// that wall (pushed out past our radius) that makes the shortest trip around it.
+// that wall (pushed out past our radius) on the shortest way round it. A corner that still
+// can't see the goal is costed via a second corner, so we don't dither between corners.
 function pathTo(me, goal) {
   const straight = normalize({ x: goal.x - me.x, y: goal.y - me.y });
   if (walkable(me, goal)) return straight;
@@ -80,11 +81,21 @@ function pathTo(me, goal) {
     { x: blocker.x + blocker.w + m, y: blocker.y - m },
     { x: blocker.x - m, y: blocker.y + blocker.h + m },
     { x: blocker.x + blocker.w + m, y: blocker.y + blocker.h + m },
-  ].filter((c) => c.x > r && c.y > r && c.x < mapSize.w - r && c.y < mapSize.h - r && dist(c, me) > 8);
+  ].filter((c) => c.x > r && c.y > r && c.x < mapSize.w - r && c.y < mapSize.h - r);
+  // Remaining distance from a corner to the goal, going via one more corner if needed.
+  const onward = (c) => {
+    if (walkable(c, goal)) return dist(c, goal);
+    let best = 1e4;
+    for (const c2 of corners) {
+      if (c2 !== c && walkable(c, c2) && walkable(c2, goal)) best = Math.min(best, dist(c, c2) + dist(c2, goal));
+    }
+    return best;
+  };
   let best = null;
   let bestCost = Infinity;
   for (const c of corners) {
-    const cost = dist(me, c) + dist(c, goal) + (walkable(me, c) ? 0 : 1000);
+    if (dist(c, me) <= 8) continue; // already there
+    const cost = dist(me, c) + onward(c) + (walkable(me, c) ? 0 : 1e4);
     if (cost < bestCost) {
       bestCost = cost;
       best = c;
