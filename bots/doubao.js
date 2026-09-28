@@ -1,7 +1,7 @@
 // Apex: a survival-focused FFA arena bot for Harena.
 // Strategy: grab a gun fast, pick off weakened enemies, dodge projectiles,
 // manage the safe zone, disengage when outmatched, and finish the rest.
-export const meta = { name: 'Apex', author: 'doubao' };
+export const meta = { name: 'Doubao', author: 'Doubao' };
 
 let rules = null;
 let walls = [];

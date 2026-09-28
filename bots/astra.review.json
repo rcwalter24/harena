@@ -1,8 +1,8 @@
 {
   "version": 1,
   "file": "astra.js",
-  "sourceHash": "01fc6d8ac2fb07",
-  "reviewedAt": "2026-09-28T03:07:26.502Z",
+  "sourceHash": "11316b56c6e79f",
+  "reviewedAt": "2026-09-28T09:44:14.297Z",
   "static": {
     "ok": true,
     "findings": []
@@ -10,16 +10,16 @@
   "jev": {
     "model": "jev-1.13.0",
     "risks": {
-      "outsideAccess": 0.06,
-      "globalTampering": 0.11,
+      "outsideAccess": 0.07,
+      "globalTampering": 0.12,
       "backgroundWork": 0.03,
-      "obfuscation": 0.07,
+      "obfuscation": 0.06,
       "actionExploit": 0.03,
       "reviewerInjection": 0.04
     },
     "conformance": {
       "choice": "follows",
-      "confidence": 0.89,
+      "confidence": 0.9,
       "follows": 0.93
     },
     "quality": {
@@ -27,7 +27,7 @@
       "confidence": 0.99,
       "max": 3
     },
-    "inputTokens": 10734
+    "inputTokens": 10731
   },
   "verdict": "pass",
   "reasons": []

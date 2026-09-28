@@ -1,8 +1,8 @@
 {
   "version": 1,
   "file": "doubao.js",
-  "sourceHash": "0579473e46538f",
-  "reviewedAt": "2026-09-28T02:34:17.253Z",
+  "sourceHash": "1b459831a2f0da",
+  "reviewedAt": "2026-09-28T09:44:17.210Z",
   "static": {
     "ok": true,
     "findings": []
@@ -11,20 +11,20 @@
     "model": "jev-1.13.0",
     "risks": {
       "outsideAccess": 0.03,
-      "globalTampering": 0.06,
+      "globalTampering": 0.07,
       "backgroundWork": 0.03,
       "obfuscation": 0.05,
       "actionExploit": 0.03,
-      "reviewerInjection": 0.05
+      "reviewerInjection": 0.04
     },
     "conformance": {
       "choice": "follows",
-      "confidence": 0.65,
-      "follows": 0.77
+      "confidence": 0.67,
+      "follows": 0.78
     },
     "quality": {
-      "score": 2.98,
-      "confidence": 0.98,
+      "score": 2.97,
+      "confidence": 0.97,
       "max": 3
     },
     "inputTokens": 5092

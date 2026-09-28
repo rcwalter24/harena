@@ -3,7 +3,7 @@
 // No dependencies. No asynchronous code.
 
 export const meta = {
-  name: "Sentinel Inertia",
+  name: "Astra",
   author: "Arena Bot",
 };
 

@@ -1,4 +1,4 @@
-export const meta = { name: 'Apex', author: 'Harena AI' };
+export const meta = { name: 'DeepSeek', author: 'DeepSeek' };
 
 let R = null;
 let walls = [];
