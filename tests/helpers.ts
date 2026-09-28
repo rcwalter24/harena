@@ -32,8 +32,9 @@ export function testGame(opts: TestGameOptions = {}): GameState {
     map: testMap(opts.walls, opts.gunSpawns),
     players: Array.from({ length: n }, (_, i) => ({ name: `P${i}` })),
     seed: opts.seed ?? 'test',
-    // Random item spawning is off unless a test turns it on, so item counts stay predictable.
-    config: mergeConfig(mergeConfig(DEFAULT_CONFIG, { items: { maxOnMap: 0 } }), opts.config),
+    // Random item spawning and inertia are off unless a test turns them on, so item counts
+    // and distances stay predictable.
+    config: mergeConfig(mergeConfig(DEFAULT_CONFIG, { items: { maxOnMap: 0 }, player: { accelTime: 0 } }), opts.config),
     timeLimit: opts.timeLimit ?? 0,
   });
 }

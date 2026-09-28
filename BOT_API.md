@@ -106,9 +106,13 @@ Consequences:
 ## 5. Rules
 
 ### 5.1 Movement and facing
-- `move` is a direction vector. Its length is clamped to 1 and multiplies your weapon's
-  top speed: knife 210 u/s, gun 190 u/s, launcher 180 u/s.
-  There is no acceleration: velocity changes instantly.
+- `move` is the velocity you **want**, as a direction vector. Its length is clamped to 1 and
+  multiplies your weapon's top speed: knife 210 u/s, gun 190 u/s, launcher 180 u/s.
+- **Movement has inertia.** Each tick your velocity moves toward the requested one by at most
+  `topSpeed / 0.3` u/s per second: about 0.3 s from standing to full speed or back, and about
+  twice that to reverse. The starting point is your actual velocity last tick (`self.vx/vy`),
+  so bumping into a wall or a player slows you down. Returning no `move` brakes to a stop.
+  Plan dodges early: you cannot change direction instantly.
 - Players are circles of radius **16**. Walls push you out along their surface, so you
   slide along them. Players can't overlap: overlapping players are pushed apart equally.
 - `state.self.vx/vy` is your *actual* velocity last tick. It is near 0 when you are
@@ -579,6 +583,7 @@ Every value below is also available at runtime as `info.rules.<path>`, for examp
 | `player.speedKnife` | 210 | u/s | Maximum movement speed while holding the knife. |
 | `player.speedGun` | 190 | u/s | Maximum movement speed while holding the gun. |
 | `player.speedLauncher` | 180 | u/s | Maximum movement speed while holding the grenade launcher. |
+| `player.accelTime` | 0.3 | s | Inertia: time to go from standing to top speed (or back). Velocity changes by at most topSpeed / accelTime per second (0 = instant). |
 | `player.turnRateDegrees` | 540 | deg/s | Maximum rate at which facing rotates toward the requested aim angle. |
 | `player.maxHp` | 100 | hp | Health at spawn and the health cap. |
 | `player.maxShield` | 100 | shield | Shield cap. Shield absorbs damage before health. |
@@ -728,8 +733,9 @@ Your bot receives the map in `info.map` and should work on any of them.
   18° per tick. Check `Math.abs(angleDiff(aim, me.facing))` before attacking.
 - **Lead moving targets.** A bullet takes `distance / 480` s to arrive, so aim at
   `target + velocity × that time`.
-- **Dodge sideways.** Bullets are only about 2.3× faster than you, so stepping perpendicular to an
-  incoming bullet's path usually avoids it.
+- **Dodge sideways, early.** Bullets are only about 2.3× faster than you, so stepping perpendicular to an
+  incoming bullet's path usually avoids it, but inertia means you must start moving a few
+  ticks before it arrives. Likewise, enemies can't swerve instantly: leading your shots pays off.
 - **Check line of sight** against `info.map.walls` before shooting (a segment-vs-rectangle test).
 - **Walk around walls.** Walking straight at a target behind a wall pins you against it
   forever (a common way for bots to stall). If the straight path is blocked, head for a corner

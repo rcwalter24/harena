@@ -90,3 +90,46 @@ describe('movement', () => {
     expect(s.players[0].ammo).toBe(4);
   });
 });
+
+describe('inertia', () => {
+  // accelTime 0.3 s at 30 ticks/s: velocity changes by at most speed / 9 per tick.
+  const inertia = () => testGame({ config: { player: { accelTime: 0.3 } } });
+
+  it('reaches top speed after accelTime and brakes just as fast', () => {
+    const s = inertia();
+    place(s, 0, 300, 500);
+    place(s, 1, 900, 900);
+    step(s, [act({ moveX: 1 })]);
+    expect(s.players[0].vx).toBeCloseTo(210 / 9);
+    for (let i = 0; i < 8; i++) step(s, [act({ moveX: 1 })]);
+    expect(s.players[0].vx).toBeCloseTo(210);
+    step(s, [act({ moveX: 1 })]);
+    expect(s.players[0].vx).toBeCloseTo(210);
+    for (let i = 0; i < 4; i++) step(s, [act()]);
+    expect(s.players[0].vx).toBeCloseTo(210 * 5 / 9);
+    for (let i = 0; i < 5; i++) step(s, [act()]);
+    expect(s.players[0].vx).toBeCloseTo(0);
+  });
+
+  it('turns gradually: reversing takes twice as long', () => {
+    const s = inertia();
+    place(s, 0, 500, 500);
+    place(s, 1, 900, 900);
+    for (let i = 0; i < 9; i++) step(s, [act({ moveX: 1 })]);
+    for (let i = 0; i < 9; i++) step(s, [act({ moveX: -1 })]);
+    expect(s.players[0].vx).toBeCloseTo(0);
+    for (let i = 0; i < 9; i++) step(s, [act({ moveX: -1 })]);
+    expect(s.players[0].vx).toBeCloseTo(-210);
+  });
+
+  it('loses speed against a wall', () => {
+    const s = testGame({ walls: [{ x: 600, y: 0, w: 50, h: 1000 }], config: { player: { accelTime: 0.3 } } });
+    place(s, 0, 500, 500);
+    place(s, 1, 100, 900);
+    for (let i = 0; i < 20; i++) step(s, [act({ moveX: 1 })]);
+    expect(s.players[0].x).toBeCloseTo(600 - 16);
+    expect(s.players[0].vx).toBeCloseTo(0);
+    step(s, [act({ moveX: -1 })]); // starts from rest, not from a stored top speed
+    expect(s.players[0].vx).toBeCloseTo(-210 / 9);
+  });
+});

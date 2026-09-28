@@ -159,8 +159,9 @@ export function validateReplay(raw: unknown): Replay {
   }
   validateMap(r.map, r.config!.player?.radius);
   // Replays recorded before the safe zone existed have no zone settings: replay them with it off.
-  // Likewise, replays from before the bush hiding limit replay without it.
+  // Likewise, replays from before inertia and the bush hiding limit replay without them.
   let config = r.config!.zone ? r.config! : { ...r.config!, zone: { ...DEFAULT_CONFIG.zone, damagePerSecond: 0 } };
+  if (config.player.accelTime === undefined) config = { ...config, player: { ...config.player, accelTime: 0 } };
   if (config.bushes.hideLimit === undefined) config = { ...config, bushes: { ...config.bushes, hideLimit: 0, rehideTime: 0 } };
   return { ...r, config, cheats: r.cheats ?? [], checksums: r.checksums ?? [] } as Replay;
 }

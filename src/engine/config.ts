@@ -17,6 +17,7 @@ export interface GameConfig {
     speedKnife: number;
     speedGun: number;
     speedLauncher: number;
+    accelTime: number;
     turnRateDegrees: number;
     maxHp: number;
     maxShield: number;
@@ -115,6 +116,7 @@ export const DEFAULT_CONFIG: GameConfig = {
     speedKnife: 210,
     speedGun: 190,
     speedLauncher: 180,
+    accelTime: 0.3,
     turnRateDegrees: 540,
     maxHp: 100,
     maxShield: 100,
@@ -218,6 +220,7 @@ export const CONFIG_DOCS: Record<string, ConfigDoc> = {
   'player.speedKnife': { unit: 'u/s', description: 'Maximum movement speed while holding the knife.' },
   'player.speedGun': { unit: 'u/s', description: 'Maximum movement speed while holding the gun.' },
   'player.speedLauncher': { unit: 'u/s', description: 'Maximum movement speed while holding the grenade launcher.' },
+  'player.accelTime': { unit: 's', description: 'Inertia: time to go from standing to top speed (or back). Velocity changes by at most topSpeed / accelTime per second (0 = instant).' },
   'player.turnRateDegrees': { unit: 'deg/s', description: 'Maximum rate at which facing rotates toward the requested aim angle.' },
   'player.maxHp': { unit: 'hp', description: 'Health at spawn and the health cap.' },
   'player.maxShield': { unit: 'shield', description: 'Shield cap. Shield absorbs damage before health.' },

@@ -46,7 +46,21 @@ export function applyMovement(state: GameState, actions: readonly ActionInput[])
     }
     const speed = p.weapon === 'gun' ? config.player.speedGun
       : p.weapon === 'launcher' ? config.player.speedLauncher : config.player.speedKnife;
-    const pos = { x: p.x + mx * speed * dt, y: p.y + my * speed * dt };
+    // Inertia: `move` asks for a velocity, and the actual velocity (last tick's, so walls
+    // and collisions count) moves toward it by at most speed / accelTime per second.
+    let vx = mx * speed;
+    let vy = my * speed;
+    if (config.player.accelTime > 0) {
+      const maxDv = (speed / config.player.accelTime) * dt;
+      const dvx = vx - p.vx;
+      const dvy = vy - p.vy;
+      const dv = length(dvx, dvy);
+      if (dv > maxDv) {
+        vx = p.vx + (dvx / dv) * maxDv;
+        vy = p.vy + (dvy / dv) * maxDv;
+      }
+    }
+    const pos = { x: p.x + vx * dt, y: p.y + vy * dt };
     resolveCircleWalls(pos, r, map.walls, map.width, map.height);
     p.x = pos.x;
     p.y = pos.y;
