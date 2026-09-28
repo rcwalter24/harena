@@ -118,6 +118,12 @@ Consequences:
   Plan dodges early: you cannot change direction instantly.
 - Players are circles of radius **16**. Walls push you out along their surface, so you
   slide along them. Players can't overlap: overlapping players are pushed apart equally.
+- Collision uses the true distance from your centre to the wall rectangle, so **wall corners are
+  round for you**: your centre can stand diagonally off a corner, 16 from it, which is inside
+  the wall grown by 16 as a square box. If your own movement model uses that square box,
+  you will think you are stuck in the wall there and may never move off the corner; model walls
+  as the rectangle grown by your radius with rounded corners (a move is blocked only when it would
+  bring your centre closer than 16 to the rectangle).
 - `state.self.vx/vy` is your *actual* velocity last tick. It is near 0 when you are
   pushing into a wall.
 - Your **facing** turns toward `aim` by at most **540°/s** (18° per tick),
