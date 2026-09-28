@@ -3,6 +3,7 @@ import type { BotStats } from '../match/supervisor.ts';
 import { playerColor } from '../render/renderer.ts';
 import { ArenaShell } from './arenaShell.ts';
 import { zoneStatus } from './hud.ts';
+import { openVideoExport } from './videoDialog.ts';
 import { replayFileName } from './matchView.ts';
 import { downloadJson, escapeHtml, showResults } from './results.ts';
 
@@ -39,7 +40,8 @@ export function mountReplay(app: HTMLElement, replay: Replay, callbacks: { onExi
       <div class="row seek-row">
         <input type="range" id="seek" min="0" max="${total}" value="0" step="1" />
         <span id="seek-time" class="speed">0:00 / ${formatTime(total, tickRate)}</span>
-      </div>`,
+      </div>
+      <div class="row"><button id="export-video" title="Render this replay to a video file">🎬 Export video</button></div>`,
     side: `
       <div class="replay-info">
         <div id="desync" class="note"></div>
@@ -72,6 +74,10 @@ export function mountReplay(app: HTMLElement, replay: Replay, callbacks: { onExi
     },
   });
 
+  shell.el('export-video').onclick = () => {
+    if (shell.loop && !shell.loop.paused) shell.togglePause();
+    openVideoExport(replay);
+  };
   const seek = shell.el<HTMLInputElement>('seek');
   seek.addEventListener('input', () => {
     seeking = true;
@@ -94,6 +100,7 @@ export function mountReplay(app: HTMLElement, replay: Replay, callbacks: { onExi
     showResults(shell.results, { state: s, botStats, sources }, {
       watchReplay: () => seekTo(0),
       download: () => downloadJson(replayFileName(replay), replay),
+      exportVideo: () => openVideoExport(replay),
       setup: () => callbacks.onExit(),
     });
   }

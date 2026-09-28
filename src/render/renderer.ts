@@ -71,19 +71,40 @@ function lerpAngle(a: number, b: number, t: number): number {
   return a + d * t;
 }
 
+export interface RendererOptions {
+  /**
+   * Draw at this fixed pixel size instead of following the canvas's CSS size and the
+   * device pixel ratio (used for offscreen video frames).
+   */
+  size?: { width: number; height: number };
+  /** Milliseconds clock for effect animations; defaults to performance.now (video export uses video time). */
+  clock?: () => number;
+}
+
 export class Renderer {
-  private readonly canvas: HTMLCanvasElement;
-  private readonly ctx: CanvasRenderingContext2D;
+  private readonly canvas: HTMLCanvasElement | OffscreenCanvas;
+  private readonly ctx: CanvasRenderingContext2D | OffscreenCanvasRenderingContext2D;
+  private readonly size: { width: number; height: number } | null;
+  private readonly clock: () => number;
   private scale = 1;
   private offsetX = 0;
   private offsetY = 0;
   private effects: Effect[] = [];
 
-  constructor(canvas: HTMLCanvasElement) {
+  constructor(canvas: HTMLCanvasElement | OffscreenCanvas, options: RendererOptions = {}) {
     this.canvas = canvas;
-    const ctx = canvas.getContext('2d');
+    const ctx = canvas.getContext('2d') as CanvasRenderingContext2D | OffscreenCanvasRenderingContext2D | null;
     if (!ctx) throw new Error('Canvas 2D is not supported');
     this.ctx = ctx;
+    this.size = options.size ?? null;
+    this.clock = options.clock ?? (() => performance.now());
+  }
+
+  /** Logical drawing size: the fixed size, or the canvas's CSS size. */
+  private get viewSize(): { width: number; height: number } {
+    if (this.size) return this.size;
+    const c = this.canvas as HTMLCanvasElement;
+    return { width: c.clientWidth, height: c.clientHeight };
   }
 
   /** Convert a mouse position (CSS pixels relative to the canvas) to world coordinates. */
@@ -93,7 +114,7 @@ export class Renderer {
 
   /** Turn engine events into short-lived visual effects. */
   addEvents(events: readonly GameEvent[], state: GameState): void {
-    const now = performance.now();
+    const now = this.clock();
     for (const e of events) {
       switch (e.type) {
         case 'swing': {
@@ -127,9 +148,8 @@ export class Renderer {
   }
 
   private fit(state: GameState): void {
-    const dpr = window.devicePixelRatio || 1;
-    const cssW = this.canvas.clientWidth;
-    const cssH = this.canvas.clientHeight;
+    const dpr = this.size ? 1 : window.devicePixelRatio || 1;
+    const { width: cssW, height: cssH } = this.viewSize;
     if (this.canvas.width !== Math.round(cssW * dpr) || this.canvas.height !== Math.round(cssH * dpr)) {
       this.canvas.width = Math.round(cssW * dpr);
       this.canvas.height = Math.round(cssH * dpr);
@@ -145,7 +165,7 @@ export class Renderer {
     const { ctx } = this;
     this.fit(state);
     ctx.fillStyle = '#12151b';
-    ctx.fillRect(0, 0, this.canvas.clientWidth, this.canvas.clientHeight);
+    ctx.fillRect(0, 0, this.viewSize.width, this.viewSize.height);
 
     ctx.save();
     ctx.translate(this.offsetX, this.offsetY);
@@ -404,7 +424,7 @@ export class Renderer {
     const { ctx } = this;
     const fuseTicks = state.config.mines.fuse * state.config.tickRate;
     const blast = state.config.mines.blastRadius;
-    const now = performance.now();
+    const now = this.clock();
     for (const m of state.mines) {
       const color = playerColor(m.ownerId);
       const left = m.fuseTimer / fuseTicks;
@@ -523,7 +543,7 @@ export class Renderer {
       }
     }
 
-    if (p.invulnerableTimer > 0 && Math.floor(performance.now() / 120) % 2 === 0) {
+    if (p.invulnerableTimer > 0 && Math.floor(this.clock() / 120) % 2 === 0) {
       ctx.strokeStyle = 'rgba(255,255,255,0.85)';
       ctx.lineWidth = 2;
       ctx.beginPath();
@@ -551,7 +571,7 @@ export class Renderer {
 
   private drawEffects(): void {
     const { ctx } = this;
-    const now = performance.now();
+    const now = this.clock();
     this.effects = this.effects.filter((e) => now - e.born < e.life);
     for (const e of this.effects) {
       const t = (now - e.born) / e.life;

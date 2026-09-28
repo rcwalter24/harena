@@ -86,6 +86,9 @@ html, body {
   gap: 14px;
 }
 
+/* Sections keep their natural height; the panel scrolls when they don't fit. */
+.panel > * { flex-shrink: 0; }
+
 .panel h1 {
   margin: 0;
   font-size: 20px;
@@ -250,7 +253,6 @@ button:hover { border-color: var(--accent); }
   display: flex;
   flex-direction: column;
   gap: 6px;
-  min-height: 0;
 }
 .logs-head {
   display: flex;
@@ -468,3 +470,29 @@ button.primary:disabled:hover { border-color: var(--accent); }
 .head-links { display: flex; align-items: center; gap: 12px; }
 .head-links button { font-size: 13px; }
 .map-preview { width: 100%; border-radius: 6px; border: 1px solid #262c3a; display: block; }
+
+/* ---------- video export dialog ---------- */
+
+.modal-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(8, 10, 14, 0.7);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 50;
+}
+.modal {
+  background: var(--panel);
+  border: 1px solid #2e3547;
+  border-radius: 10px;
+  padding: 20px 24px;
+  width: min(520px, calc(100vw - 32px));
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.modal h2 { margin: 0; font-size: 18px; }
+.modal p { margin: 0; font-size: 13px; line-height: 1.5; }
+.modal-actions { display: flex; justify-content: flex-end; gap: 8px; }
+.video-progress progress { width: 100%; }

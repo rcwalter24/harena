@@ -19,6 +19,7 @@ export interface ResultsActions {
   rematch?: () => void;
   newSeed?: () => void;
   watchReplay?: () => void;
+  exportVideo?: () => void;
   setup: () => void;
 }
 
@@ -93,6 +94,7 @@ export function showResults(host: HTMLElement, data: ResultsData, actions: Resul
       <div class="results-actions">
         ${actions.watchReplay ? '<button data-act="watchReplay">▶ Watch replay</button>' : ''}
         ${actions.download ? '<button data-act="download">⬇ Download replay</button>' : ''}
+        ${actions.exportVideo ? '<button data-act="exportVideo">🎬 Export video</button>' : ''}
         ${actions.rematch ? '<button data-act="rematch">Rematch (same seed)</button>' : ''}
         ${actions.newSeed ? '<button data-act="newSeed">Rematch (new seed)</button>' : ''}
         <button data-act="setup" class="primary">Back to setup</button>

@@ -11,6 +11,7 @@ import { playerColor } from '../render/renderer.ts';
 import { createBrowserWorker } from '../sandbox/browser/host.ts';
 import { ArenaShell } from './arenaShell.ts';
 import { zoneStatus } from './hud.ts';
+import { openVideoExport } from './videoDialog.ts';
 import { displayName, getBot } from './bots.ts';
 import { HumanController } from './input.ts';
 import { randomSeed, saveSetup, type MatchSetup } from './matchSetup.ts';
@@ -146,6 +147,7 @@ export function mountMatch(app: HTMLElement, setup: MatchSetup, callbacks: Match
     showResults(shell.results, { state: s, botStats, sources: sources() }, {
       watchReplay: lastReplay ? () => callbacks.onReplay(lastReplay!) : undefined,
       download: lastReplay ? () => downloadJson(replayFileName(lastReplay!), lastReplay) : undefined,
+      exportVideo: lastReplay ? () => openVideoExport(lastReplay!) : undefined,
       rematch: () => start(),
       newSeed: () => {
         setup.seed = randomSeed();

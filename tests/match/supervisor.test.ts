@@ -19,8 +19,8 @@ afterEach(() => {
 });
 
 /** One bot (player 0) against an idle scripted player (player 1). */
-async function setup(name: string, seed = 'seed') {
-  const state = testGame({ config: { sandbox: SANDBOX }, seed });
+async function setup(name: string, seed = 'seed', sandbox = SANDBOX) {
+  const state = testGame({ config: { sandbox }, seed });
   place(state, 0, 300, 300);
   place(state, 1, 700, 700);
   const bot = new BotController({
@@ -46,7 +46,8 @@ const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 describe('BotController (node worker_threads)', () => {
   it('runs a well-behaved bot, keeps module state, forwards console.log', async () => {
-    const { state, bot, runner } = await setup('good');
+    // Generous budget: this is about behaviour, and a busy machine must not turn it into a timeout.
+    const { state, bot, runner } = await setup('good', 'seed', { ...SANDBOX, decideBudgetMs: 200, graceMs: 300 });
     expect(bot.status).toBe('running');
     const actions = await ticks(runner, 5);
     expect(actions.every((a) => a.moveX === 1)).toBe(true);

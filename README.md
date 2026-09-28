@@ -51,9 +51,16 @@ applied. After a match, the results screen offers **Watch replay** and **Downloa
 match exactly (bots are not needed) and verify themselves against recorded checksums; the
 viewer warns if the engine or rules changed since recording.
 
+**Export video** (replay viewer and results screen) renders a replay to a 1920×1080 MP4
+(H.264) in the browser, faster than real time: a title card, the match with player cards and
+kill feed, and the final results. Quiet stretches can play at 4×. It needs WebCodecs (recent
+Chrome, Edge or Safari); where H.264 encoding is missing it falls back to WebM (VP9). Batch
+replays (`--replays`) can be opened and exported the same way.
+
 ## Layout
 
 - `src/engine/` – simulation (config, geometry, systems, deterministic math/RNG)
+- `src/video/` – replay → video export (frame layout, fast-forward timeline, encoding via `mediabunny`)
 - `src/match/` – controllers, the match runner and the bot supervisor (budgets, failures, restarts)
 - `src/sandbox/` – bot worker harness for the browser (Web Worker) and Node (worker_threads)
 - `src/review/` – static check and Jev review
