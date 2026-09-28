@@ -15,6 +15,7 @@ simulation; the browser renders it on a canvas with interpolation.
 | `npm run build` | Type-check and build a static bundle into `dist/` |
 | `npm run docs` | Regenerate `BOT_API.md` from the template, config, types and example bot |
 | `npm run docs:check` | Fail if `BOT_API.md` is out of date (also covered by `npm test`) |
+| `npm run batch -- --bots a,b,…` | Headless batch matches in Node with win rates and stats (`-- --help` for options) |
 | `npm run review` | Static check + Jev AI review of new/changed bots (`-- --all`, `-- file.js`, `-- --static-only`) |
 
 ## Adding a bot
@@ -27,6 +28,17 @@ simulation; the browser renders it on a canvas with interpolation.
 
 The Jev API key is read at runtime from `TYPESAFE_API_KEY` or `~/.secrets/typesafe`
 (override the path with `TYPESAFE_KEY_FILE`); it never reaches the browser.
+
+## Batch matches
+
+```bash
+npm run batch -- --bots gunner,chaser,random --games 100 --map all --seed s1
+npm run batch -- --bots gunner,gunner,chaser,chaser --games 50 --replays out/replays --json
+```
+
+Each game gets its own seed (`<seed>-<index>`) and shuffled seats; bots run in
+`worker_threads` with the same sandbox rules as in the browser. Without timeouts the
+same arguments reproduce the same results. Bots that fail the static check are refused.
 
 ## Replays
 
@@ -46,6 +58,8 @@ viewer warns if the engine or rules changed since recording.
 - `src/render/` – canvas renderer
 - `src/ui/` – pages, HUD and keyboard/mouse input
 - `maps/` – map data (JSON)
-- `tests/` – Vitest unit tests
+- `cli/` – Node command-line tools (batch matches)
+- `src/batch/` – headless batch runner
+- `tests/` – Vitest tests
 
 All rule numbers live in `src/engine/config.ts`.

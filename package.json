@@ -13,7 +13,8 @@
     "test:watch": "vitest",
     "review": "node scripts/review.ts",
     "docs": "node scripts/gen-bot-api.ts",
-    "docs:check": "node scripts/gen-bot-api.ts --check"
+    "docs:check": "node scripts/gen-bot-api.ts --check",
+    "batch": "node cli/batch.ts"
   },
   "devDependencies": {
     "@types/node": "^26.6.3",
