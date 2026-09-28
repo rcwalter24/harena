@@ -1,4 +1,6 @@
 import { step } from '../engine/game.ts';
+import { normalizeAction } from '../engine/sanitize.ts';
+import type { ReplayRecorder } from '../engine/replay.ts';
 import type { ActionInput, GameEvent, GameState } from '../engine/types.ts';
 import type { Controller } from './controller.ts';
 
@@ -12,6 +14,8 @@ export class MatchRunner {
   /** Actions applied on the most recent tick (index = player id). */
   lastActions: ActionInput[] = [];
   private listeners: Array<(events: GameEvent[], state: GameState) => void> = [];
+  /** When set, every applied action (and periodic checksums) is recorded. */
+  recorder: ReplayRecorder | null = null;
 
   constructor(state: GameState, controllers: Controller[]) {
     if (controllers.length !== state.players.length) {
@@ -34,9 +38,12 @@ export class MatchRunner {
 
   async tick(): Promise<GameEvent[]> {
     if (this.state.over) return [];
-    const actions = await Promise.all(this.controllers.map((c, id) => c.decide(this.state, id)));
+    const raw = await Promise.all(this.controllers.map((c, id) => c.decide(this.state, id)));
+    const actions = raw.map(normalizeAction);
     this.lastActions = actions;
+    this.recorder?.recordTick(this.state.tick, actions);
     const events = step(this.state, actions);
+    this.recorder?.afterTick(this.state);
     for (const l of this.listeners) l(events, this.state);
     return events;
   }

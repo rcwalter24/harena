@@ -1,16 +1,21 @@
 import type { GameEvent, GameState } from '../engine/types.ts';
-import type { MatchRunner } from '../match/runner.ts';
 import { captureFrame, type FrameCapture } from '../render/renderer.ts';
+
+/** Anything that advances a game one tick at a time: a MatchRunner, or a replay. */
+export interface Ticker {
+  readonly state: GameState;
+  tick(): Promise<GameEvent[]>;
+}
 
 export const SPEEDS = [0.25, 0.5, 1, 2, 4, 8];
 
 /**
- * Real-time driver for a MatchRunner in the browser: fixed-rate ticks scaled by
+ * Real-time driver for a Ticker in the browser: fixed-rate ticks scaled by
  * a speed multiplier, with render interpolation between ticks. If controllers
  * (bots) are slower than the requested rate, the game simply runs slower.
  */
 export class GameLoop {
-  readonly runner: MatchRunner;
+  readonly runner: Ticker;
   paused = false;
   speedIndex = SPEEDS.indexOf(1);
   /** Measured simulation rate (ticks per real second). */
@@ -27,7 +32,7 @@ export class GameLoop {
   private readonly onEvents: (events: GameEvent[], state: GameState) => void;
 
   constructor(
-    runner: MatchRunner,
+    runner: Ticker,
     onFrame: (state: GameState, prev: FrameCapture | null, alpha: number) => void,
     onEvents: (events: GameEvent[], state: GameState) => void,
   ) {
@@ -58,6 +63,12 @@ export class GameLoop {
   stop(): void {
     this.running = false;
     cancelAnimationFrame(this.rafId);
+  }
+
+  /** Forget the previous frame (after a seek, so nothing is interpolated across the jump). */
+  resetInterpolation(): void {
+    this.prev = null;
+    this.accumulator = 0;
   }
 
   /** Advance exactly one tick (used by the "step" button while paused). */

@@ -1,4 +1,6 @@
 import { DEFAULT_CONFIG } from '../engine/config.ts';
+import { validateReplay, type Replay } from '../engine/replay.ts';
+import { drawMapPreview } from '../render/mapPreview.ts';
 import { DUMMY_KINDS, type DummyKind } from '../match/dummies.ts';
 import type { BotReview } from '../review/jev.ts';
 import { playerColor } from '../render/renderer.ts';
@@ -42,7 +44,13 @@ function sanitizeSetup(setup: MatchSetup): MatchSetup {
 }
 
 /** Match setup page: bot library with reviews, seats, map, seed and time limit. */
-export function mountSetup(app: HTMLElement, onStart: (setup: MatchSetup) => void): () => void {
+export interface SetupCallbacks {
+  onStart: (setup: MatchSetup) => void;
+  onReplay: (replay: Replay) => void;
+}
+
+export function mountSetup(app: HTMLElement, callbacks: SetupCallbacks): () => void {
+  const onStart = callbacks.onStart;
   let setup = sanitizeSetup(loadSetup() ?? defaultSetup());
   let reviews: Record<string, BotReview> = {};
   const reviewing = new Set<string>();
@@ -52,7 +60,11 @@ export function mountSetup(app: HTMLElement, onStart: (setup: MatchSetup) => voi
     <div class="setup">
       <header class="setup-head">
         <h1>Harena <small>bot arena</small></h1>
-        <a class="doc-link" href="/BOT_API.md" target="_blank" rel="noreferrer">BOT_API.md</a>
+        <div class="head-links">
+          <button id="load-replay" title="Open a replay .json file">Load replay…</button>
+          <input type="file" id="replay-file" accept=".json,application/json" hidden />
+          <a class="doc-link" href="/BOT_API.md" target="_blank" rel="noreferrer">BOT_API.md</a>
+        </div>
       </header>
       <div class="setup-grid">
         <section class="box">
@@ -69,6 +81,7 @@ export function mountSetup(app: HTMLElement, onStart: (setup: MatchSetup) => voi
           <h2>Match</h2>
           <div class="form">
             <label>Map <select id="map"></select></label>
+            <canvas id="map-preview" class="map-preview"></canvas>
             <label>Seed <span class="seed-row"><input type="text" id="seed" /><button id="reseed" title="Random seed">🎲</button></span></label>
             <label>Time limit (s) <input type="number" id="time" min="0" max="3600" step="10" /></label>
             <label class="check"><input type="checkbox" id="debug" /> Debug rules (99 lives, cheat keys)</label>
@@ -190,6 +203,8 @@ export function mountSetup(app: HTMLElement, onStart: (setup: MatchSetup) => voi
 
   function renderForm(): void {
     mapSelect.value = setup.mapId;
+    const map = MAPS.find((m) => m.id === setup.mapId);
+    if (map) drawMapPreview($<HTMLCanvasElement>('map-preview'), map);
     seedInput.value = setup.seed;
     timeInput.value = String(setup.timeLimit);
     debugBox.checked = setup.debug;
@@ -213,6 +228,19 @@ export function mountSetup(app: HTMLElement, onStart: (setup: MatchSetup) => voi
   mapSelect.onchange = () => {
     setup.mapId = mapSelect.value;
     persist();
+    renderForm();
+  };
+  const fileInput = $<HTMLInputElement>('replay-file');
+  $('load-replay').onclick = () => fileInput.click();
+  fileInput.onchange = async () => {
+    const file = fileInput.files?.[0];
+    fileInput.value = '';
+    if (!file) return;
+    try {
+      callbacks.onReplay(validateReplay(JSON.parse(await file.text())));
+    } catch (err) {
+      alert(`Could not open ${file.name}: ${(err as Error).message}`);
+    }
   };
   seedInput.oninput = () => {
     setup.seed = seedInput.value.trim() || '0';

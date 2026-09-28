@@ -98,3 +98,28 @@ export function unknownActionKeys(raw: unknown): string[] {
   if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return [];
   return Object.keys(raw).filter((k) => !KNOWN_KEYS.has(k));
 }
+
+/**
+ * Canonical form of an already well-typed action (from any controller): move
+ * clamped to length 1 and quantized to 1e-3, aim normalized and quantized to
+ * 1e-4. Idempotent. The runner applies it to every action, so what a replay
+ * records is exactly what the engine applied.
+ */
+export function normalizeAction(a: ActionInput): ActionInput {
+  let x = Number.isFinite(a.moveX) ? a.moveX : 0;
+  let y = Number.isFinite(a.moveY) ? a.moveY : 0;
+  const len = Math.sqrt(x * x + y * y);
+  if (len > 1) {
+    x /= len;
+    y /= len;
+  }
+  const aim = a.aim === null || !Number.isFinite(a.aim) ? null : normalizeAngle(quantize(normalizeAngle(a.aim), 1e-4));
+  return {
+    moveX: quantize(x, 1e-3) + 0,
+    moveY: quantize(y, 1e-3) + 0,
+    aim: aim === null ? null : aim + 0,
+    attack: a.attack === true,
+    weapon: a.weapon === 'knife' || a.weapon === 'gun' || a.weapon === 'launcher' ? a.weapon : null,
+    plantMine: a.plantMine === true,
+  };
+}

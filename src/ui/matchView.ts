@@ -1,22 +1,20 @@
 import { DEFAULT_CONFIG, mergeConfig } from '../engine/config.ts';
+import { applyCheat, type CheatKind } from '../engine/debug.ts';
 import { createGame } from '../engine/game.ts';
+import { ReplayRecorder, type Replay, type ReplayPlayerInfo } from '../engine/replay.ts';
 import type { GameState } from '../engine/types.ts';
 import type { Controller } from '../match/controller.ts';
 import { DummyController } from '../match/dummies.ts';
 import { MatchRunner } from '../match/runner.ts';
-import { BotController, type LogEntry } from '../match/supervisor.ts';
-import { Renderer, playerColor } from '../render/renderer.ts';
+import { BotController } from '../match/supervisor.ts';
+import { playerColor } from '../render/renderer.ts';
 import { createBrowserWorker } from '../sandbox/browser/host.ts';
+import { ArenaShell } from './arenaShell.ts';
 import { getBot } from './bots.ts';
-import { KillFeed, PlayerCards } from './hud.ts';
 import { HumanController } from './input.ts';
-import { GameLoop } from './loop.ts';
-import type { MatchSetup } from './matchSetup.ts';
+import { randomSeed, saveSetup, type MatchSetup } from './matchSetup.ts';
 import { getMap } from './maps.ts';
-
-function escapeHtml(text: string): string {
-  return text.replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]!);
-}
+import { downloadJson, escapeHtml, showResults } from './results.ts';
 
 /** Display names for the seats, numbering duplicates ("Gunner", "Gunner #2"). */
 function seatNames(setup: MatchSetup): string[] {
@@ -29,77 +27,75 @@ function seatNames(setup: MatchSetup): string[] {
   });
 }
 
+function seatInfo(setup: MatchSetup, names: string[]): ReplayPlayerInfo[] {
+  return setup.slots.map((s, i) => {
+    if (s.kind === 'bot') return { name: names[i], kind: 'bot', source: s.file, sourceHash: getBot(s.file)?.hash };
+    if (s.kind === 'dummy') return { name: names[i], kind: 'dummy', source: s.dummy };
+    return { name: names[i], kind: 'human', source: 'keyboard' };
+  });
+}
+
+export function replayFileName(replay: Replay): string {
+  const stamp = replay.createdAt.replace(/[:.]/g, '-').slice(0, 19);
+  return `harena-${replay.map.id}-${replay.seed}-${stamp}.json`;
+}
+
+export interface MatchCallbacks {
+  onExit: () => void;
+  onReplay: (replay: Replay) => void;
+}
+
 /**
- * The spectator view: canvas, player cards, kill feed, speed controls and the
- * per-bot log. Returns a function that tears everything down.
+ * A live match: bots in Web Workers, optional human and dummies, the per-bot
+ * log, replay recording and the results screen. Returns a teardown function.
  */
-export function mountMatch(app: HTMLElement, setup: MatchSetup, onExit: () => void): () => void {
+export function mountMatch(app: HTMLElement, setup: MatchSetup, callbacks: MatchCallbacks): () => void {
   const hasHuman = setup.slots.some((s) => s.kind === 'human');
-  app.innerHTML = `
-    <div class="layout">
-      <div class="stage">
-        <canvas id="arena"></canvas>
-        <div class="killfeed" id="killfeed"></div>
-        <div class="banner hidden" id="banner"></div>
-        <div class="stage-info" id="stage-info"></div>
-      </div>
-      <aside class="panel">
-        <div class="panel-head">
-          <h1>Harena</h1>
-          <button id="exit" title="Esc">← Setup</button>
-        </div>
-        <div class="match-meta" id="meta"></div>
-        <div class="controls">
-          <div class="row">
-            <button id="pause" title="P">Pause</button>
-            <button id="step" title="N">Step</button>
-            <button id="restart" title="R">Restart</button>
-          </div>
-          <div class="row">
-            <button id="slower" title="[">−</button>
-            <span id="speed" class="speed">1×</span>
-            <button id="faster" title="]">+</button>
-            <label class="check"><input type="checkbox" id="debug" /> Debug (F3)</label>
-          </div>
-        </div>
-        <div id="cards" class="cards"></div>
-        <div class="logs">
-          <div class="logs-head"><b>Bot log</b><select id="log-filter"></select></div>
-          <div class="log-list" id="log-list"></div>
-        </div>
-        <div class="help">
-          ${hasHuman ? '<b>WASD</b> move · <b>mouse</b> aim · <b>click/Space</b> attack<br /><b>1/2/3</b> knife/gun/launcher · <b>Q</b> next weapon · <b>E/right click</b> mine<br />' : ''}
-          <b>P</b> pause · <b>N</b> step · <b>[ ]</b> speed · <b>R</b> restart · <b>F3</b> debug
-          ${setup.debug ? '<br />Cheats: <b>G</b> all weapons + ammo + mines · <b>H</b> heal + shield' : ''}
-        </div>
-      </aside>
-    </div>`;
-
-  const $ = <T extends HTMLElement>(id: string) => app.querySelector<T>(`#${id}`)!;
-  const canvas = $<HTMLCanvasElement>('arena');
-  const debugBox = $<HTMLInputElement>('debug');
-  const pauseBtn = $('pause');
-  const speedLabel = $('speed');
-  const info = $('stage-info');
-  const banner = $('banner');
-  const logList = $('log-list');
-  const logFilter = $<HTMLSelectElement>('log-filter');
-
-  const renderer = new Renderer(canvas);
-  const cards = new PlayerCards($('cards'));
-  const feed = new KillFeed($('killfeed'));
+  const humanId = setup.slots.findIndex((s) => s.kind === 'human');
   const map = getMap(setup.mapId);
   const names = seatNames(setup);
-  const humanId = setup.slots.findIndex((s) => s.kind === 'human');
   const config = setup.debug ? mergeConfig(DEFAULT_CONFIG, { player: { startLives: 99, maxLives: 99 } }) : DEFAULT_CONFIG;
+  const metaText = () => `${map.name} · seed ${escapeHtml(setup.seed)} · ${setup.timeLimit > 0 ? `${setup.timeLimit}s` : 'no time limit'}${setup.debug ? ' · debug rules' : ''}`;
 
-  $('meta').textContent = `${map.name} · seed ${setup.seed} · ${setup.timeLimit > 0 ? `${setup.timeLimit}s` : 'no time limit'}${setup.debug ? ' · debug rules' : ''}`;
-
-  let loop: GameLoop | null = null;
+  let runner: MatchRunner | null = null;
+  let recorder: ReplayRecorder | null = null;
   let bots: Array<BotController | null> = [];
-  let lastPanelUpdate = 0;
+  let lastReplay: Replay | null = null;
   let logsDirty = true;
 
+  const shell = new ArenaShell(app, {
+    meta: metaText(),
+    restartLabel: 'Restart',
+    side: `
+      <div class="logs">
+        <div class="logs-head"><b>Bot log</b><select id="log-filter"></select></div>
+        <div class="log-list" id="log-list"></div>
+      </div>`,
+    help: `${hasHuman ? '<b>WASD</b> move · <b>mouse</b> aim · <b>click/Space</b> attack<br /><b>1/2/3</b> knife/gun/launcher · <b>Q</b> next weapon · <b>E/right click</b> mine<br />' : ''}
+      <b>P</b> pause · <b>N</b> step · <b>[ ]</b> speed · <b>R</b> restart · <b>F3</b> debug
+      ${setup.debug ? '<br />Cheats: <b>G</b> all weapons + ammo + mines · <b>H</b> heal + shield' : ''}`,
+  }, {
+    viewerId: hasHuman ? humanId : undefined,
+    onRestart: () => start(),
+    onExit: () => callbacks.onExit(),
+    onEvents: (events, s) => {
+      if (events.some((e) => e.type === 'matchEnd')) finish(s);
+    },
+    onPanel: (s) => {
+      const t = s.tick / s.config.tickRate;
+      const left = s.timeLimitTicks > 0 ? ` · ${Math.max(0, setup.timeLimit - t).toFixed(0)}s left` : '';
+      shell.setInfo(`tick ${s.tick} · ${t.toFixed(1)}s${left} · ${shell.loop?.actualTps ?? 0} tps`);
+      if (logsDirty) renderLogs();
+    },
+    onKey: (e) => {
+      if (e.code === 'KeyG') return cheat('arm');
+      if (e.code === 'KeyH') return cheat('heal');
+      return false;
+    },
+  });
+
+  const logList = shell.el('log-list');
+  const logFilter = shell.el<HTMLSelectElement>('log-filter');
   logFilter.add(new Option('All bots', 'all'));
   setup.slots.forEach((s, id) => {
     if (s.kind === 'bot') logFilter.add(new Option(names[id], String(id)));
@@ -110,11 +106,7 @@ export function mountMatch(app: HTMLElement, setup: MatchSetup, onExit: () => vo
 
   function renderLogs(): void {
     const filter = logFilter.value;
-    const rows: Array<{ id: number; entry: LogEntry }> = [];
-    bots.forEach((bot, id) => {
-      if (!bot || (filter !== 'all' && filter !== String(id))) return;
-      for (const entry of bot.logs) rows.push({ id, entry });
-    });
+    const rows = bots.flatMap((bot, id) => (!bot || (filter !== 'all' && filter !== String(id)) ? [] : bot.logs.map((entry) => ({ id, entry }))));
     rows.sort((a, b) => a.entry.tick - b.entry.tick);
     const shown = rows.slice(-200);
     logList.innerHTML = shown.length === 0
@@ -129,11 +121,36 @@ export function mountMatch(app: HTMLElement, setup: MatchSetup, onExit: () => vo
     logsDirty = false;
   }
 
+  function cheat(kind: CheatKind): boolean {
+    if (!setup.debug || humanId < 0 || !runner || runner.state.over) return false;
+    if (applyCheat(runner.state, humanId, kind)) recorder?.recordCheat(runner.state.tick, humanId, kind);
+    return true;
+  }
+
+  function sources(): string[] {
+    return setup.slots.map((s) => (s.kind === 'bot' ? s.file : s.kind === 'human' ? 'keyboard' : `dummy: ${s.dummy}`));
+  }
+
+  function finish(s: GameState): void {
+    const botStats = bots.map((b) => (b ? structuredClone(b.stats) : null));
+    lastReplay = recorder ? recorder.finish(s, botStats) : null;
+    showResults(shell.results, { state: s, botStats, sources: sources() }, {
+      watchReplay: lastReplay ? () => callbacks.onReplay(lastReplay!) : undefined,
+      download: lastReplay ? () => downloadJson(replayFileName(lastReplay!), lastReplay) : undefined,
+      rematch: () => start(),
+      newSeed: () => {
+        setup.seed = randomSeed();
+        saveSetup(setup);
+        shell.root.querySelector('.match-meta')!.innerHTML = metaText();
+        start();
+      },
+      setup: () => callbacks.onExit(),
+    });
+  }
+
   function start(): void {
-    loop?.stop();
-    loop?.runner.dispose();
-    feed.clear();
-    banner.classList.add('hidden');
+    shell.loop?.stop();
+    runner?.dispose();
     logsDirty = true;
 
     const state = createGame({ map, config, seed: setup.seed, timeLimit: setup.timeLimit, players: names.map((name) => ({ name })) });
@@ -141,17 +158,16 @@ export function mountMatch(app: HTMLElement, setup: MatchSetup, onExit: () => vo
     const controllers: Controller[] = setup.slots.map((slot, id) => {
       if (slot.kind === 'human') {
         bots.push(null);
-        return new HumanController(canvas, renderer);
+        return new HumanController(shell.canvas, shell.renderer);
       }
       if (slot.kind === 'dummy') {
         bots.push(null);
         return new DummyController(slot.dummy);
       }
-      const entry = getBot(slot.file);
       const bot = new BotController({
         name: names[id],
         fileName: slot.file,
-        source: entry?.source ?? '',
+        source: getBot(slot.file)?.source ?? '',
         botSeed: `${setup.seed}::bot${id}`,
         createWorker: createBrowserWorker,
         onLog: () => {
@@ -162,125 +178,21 @@ export function mountMatch(app: HTMLElement, setup: MatchSetup, onExit: () => vo
       return bot;
     });
 
-    const runner = new MatchRunner(state, controllers);
-    const previous = loop;
-    loop = new GameLoop(
-      runner,
-      (s, prev, alpha) => {
-        const human = humanId >= 0 ? humanId : undefined;
-        renderer.render(s, prev, alpha, { debug: debugBox.checked, focusId: human, viewerId: human });
-        const now = performance.now();
-        if (now - lastPanelUpdate > 100) {
-          lastPanelUpdate = now;
-          cards.update(s, humanId >= 0 ? humanId : undefined);
-          const t = s.tick / s.config.tickRate;
-          const left = s.timeLimitTicks > 0 ? ` · ${Math.max(0, setup.timeLimit - t).toFixed(0)}s left` : '';
-          info.textContent = `tick ${s.tick} · ${t.toFixed(1)}s${left} · ${loop!.actualTps} tps`;
-          if (logsDirty) renderLogs();
-        }
-      },
-      (events, s) => {
-        renderer.addEvents(events, s);
-        feed.add(events, s);
-        if (s.result && events.some((e) => e.type === 'matchEnd')) showResult(s);
-      },
-    );
-    if (previous) {
-      loop.paused = previous.paused;
-      loop.speedIndex = previous.speedIndex;
-    }
-    info.textContent = 'starting bots…';
-    const current = loop;
-    void runner.init().then(() => {
-      if (loop === current) current.start();
+    const current = new MatchRunner(state, controllers);
+    recorder = new ReplayRecorder({ seed: setup.seed, timeLimit: setup.timeLimit, map, config, players: seatInfo(setup, names) });
+    current.recorder = recorder;
+    runner = current;
+    const loop = shell.run(current);
+    shell.setInfo('starting bots…');
+    void current.init().then(() => {
+      if (runner === current) loop.start();
     });
-    syncButtons();
-  }
-
-  function showResult(s: GameState): void {
-    const result = s.result!;
-    const winners = result.ranking.filter((r) => r.rank === 1).map((r) => s.players[r.playerId].name);
-    const title = result.reason === 'timeLimit' ? 'Time limit reached' : result.reason === 'allEliminated' ? 'Everyone is out' : 'Last one standing';
-    const headline = winners.length === 1 ? `🏆 ${winners[0]} wins` : `Draw: ${winners.join(', ')}`;
-    const rows = result.ranking.map((r) => {
-      const p = s.players[r.playerId];
-      const detail = p.eliminated ? 'eliminated' : `${p.lives} ♥ · ${Math.ceil(p.hp + p.shield)} hp+shield`;
-      return `<li><span class="rank">${r.rank}.</span><span class="dot" style="background:${playerColor(p.id)}"></span>${escapeHtml(p.name)} <span class="muted">${detail} · K ${p.stats.kills}</span></li>`;
-    }).join('');
-    banner.innerHTML = `<div class="banner-sub">${title}</div><div>${escapeHtml(headline)}</div><ol class="result-list">${rows}</ol>`;
-    banner.classList.remove('hidden');
-  }
-
-  function syncButtons(): void {
-    if (!loop) return;
-    speedLabel.textContent = `${loop.speed}×`;
-    pauseBtn.textContent = loop.paused ? 'Resume' : 'Pause';
-  }
-
-  function cheat(kind: 'gun' | 'heal'): void {
-    if (!setup.debug || humanId < 0 || !loop) return;
-    const me = loop.runner.state.players[humanId];
-    if (!me.alive) return;
-    const { player, gun, launcher, mines } = loop.runner.state.config;
-    if (kind === 'gun') {
-      me.hasGun = true;
-      me.ammo = gun.maxAmmo;
-      me.hasLauncher = true;
-      me.grenades = launcher.maxAmmo;
-      me.mines = mines.maxCarry;
-    } else {
-      me.hp = player.maxHp;
-      me.shield = player.maxShield;
-    }
-  }
-
-  const togglePause = () => {
-    if (loop) loop.paused = !loop.paused;
-    syncButtons();
-  };
-  const changeSpeed = (d: number) => {
-    loop?.changeSpeed(d);
-    syncButtons();
-  };
-  const exit = () => {
-    dispose();
-    onExit();
-  };
-
-  pauseBtn.onclick = togglePause;
-  $('step').onclick = () => void loop?.stepOnce();
-  $('restart').onclick = start;
-  $('slower').onclick = () => changeSpeed(-1);
-  $('faster').onclick = () => changeSpeed(1);
-  $('exit').onclick = exit;
-
-  const onKey = (e: KeyboardEvent) => {
-    const tag = (e.target as HTMLElement).tagName;
-    if (tag === 'SELECT' || tag === 'INPUT') return;
-    switch (e.code) {
-      case 'KeyP': togglePause(); break;
-      case 'KeyN': void loop?.stepOnce(); break;
-      case 'BracketLeft': changeSpeed(-1); break;
-      case 'BracketRight': changeSpeed(1); break;
-      case 'KeyR': start(); break;
-      case 'Escape': exit(); break;
-      case 'F3':
-        e.preventDefault();
-        debugBox.checked = !debugBox.checked;
-        break;
-      case 'KeyG': cheat('gun'); break;
-      case 'KeyH': cheat('heal'); break;
-    }
-  };
-  window.addEventListener('keydown', onKey);
-
-  function dispose(): void {
-    window.removeEventListener('keydown', onKey);
-    loop?.stop();
-    loop?.runner.dispose();
-    loop = null;
   }
 
   start();
-  return dispose;
+  return () => {
+    shell.dispose();
+    runner?.dispose();
+    runner = null;
+  };
 }

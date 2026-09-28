@@ -28,6 +28,14 @@ simulation; the browser renders it on a canvas with interpolation.
 The Jev API key is read at runtime from `TYPESAFE_API_KEY` or `~/.secrets/typesafe`
 (override the path with `TYPESAFE_KEY_FILE`); it never reaches the browser.
 
+## Replays
+
+Every match is recorded: the seed, the map and rule config, and every action the engine
+applied. After a match, the results screen offers **Watch replay** and **Download replay**
+(a `.json` file); **Load replay…** on the setup page opens one again. Replays re-simulate the
+match exactly (bots are not needed) and verify themselves against recorded checksums; the
+viewer warns if the engine or rules changed since recording.
+
 ## Layout
 
 - `src/engine/` – simulation (config, geometry, systems, deterministic math/RNG)
