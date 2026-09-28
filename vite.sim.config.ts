@@ -28,7 +28,7 @@ export default defineConfig({
       output: {
         entryFileNames: 'harena-sim.mjs',
         codeSplitting: false,
-        banner: `#!/usr/bin/env node\n// Harena test kit (build ${stamp}). Run: node harena-sim.mjs --help\n// MIT License. Source: https://github.com/rcwalter24/harena`,
+        banner: `#!/usr/bin/env node\n// Harena test kit (build ${stamp}). Run: node harena-sim.mjs --help\n// MIT License.`,
       },
     },
   },
