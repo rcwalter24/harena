@@ -719,9 +719,10 @@ export class Renderer {
       const color = playerColor(m.ownerId);
       const left = m.fuseTimer / fuseTicks;
       const secondsLeft = m.fuseTimer / state.config.tickRate;
-      // Where it will hurt, shaded by damage; stronger as the fuse runs out.
+      // Where it will hurt, shaded by damage: faint, a little stronger as the fuse runs out, so
+      // the blast itself stands out.
       const field = this.blastField(state, 'mine', m.x, m.y);
-      ctx.globalAlpha = 0.2 + 0.55 * (1 - left) + (secondsLeft < 1 ? 0.2 * (1 - secondsLeft) : 0);
+      ctx.globalAlpha = 0.12 + 0.2 * (1 - left) + (secondsLeft < 1 ? 0.1 * (1 - secondsLeft) : 0);
       ctx.drawImage(field.image, field.x, field.y, field.size, field.size);
       ctx.globalAlpha = 1;
       ctx.fillStyle = '#23262e';
@@ -899,14 +900,23 @@ export class Renderer {
           break;
         case 'explosion': {
           // The blast takes the shape of its damage map (walls cast shadows), with a hot core.
+          // It starts as a bright flash over the whole reach, then cools to red and fades.
           if (e.field) {
-            ctx.globalAlpha = 0.95 * (1 - t);
+            ctx.globalAlpha = Math.min(1, 1.15 * (1 - t) ** 0.7);
             ctx.drawImage(e.field.image, e.field.x, e.field.y, e.field.size, e.field.size);
+            if (t < 0.3) {
+              ctx.globalCompositeOperation = 'lighter';
+              ctx.globalAlpha = 1 - t / 0.3;
+              ctx.drawImage(e.field.image, e.field.x, e.field.y, e.field.size, e.field.size);
+              ctx.drawImage(e.field.image, e.field.x, e.field.y, e.field.size, e.field.size);
+              ctx.globalCompositeOperation = 'source-over';
+            }
           }
-          const core = (e.size ?? 0) * 0.45;
-          ctx.globalAlpha = 0.8 * (1 - t);
+          const core = (e.size ?? 0) * (0.35 + 0.35 * Math.sqrt(t));
+          ctx.globalAlpha = 1 - t;
           const fill = ctx.createRadialGradient(e.x, e.y, 0, e.x, e.y, core);
-          fill.addColorStop(0, '#fff3c4');
+          fill.addColorStop(0, '#ffffff');
+          fill.addColorStop(0.35, '#fff3c4');
           fill.addColorStop(1, 'rgba(255,179,71,0)');
           ctx.fillStyle = fill;
           ctx.beginPath();
