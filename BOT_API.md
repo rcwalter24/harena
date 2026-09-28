@@ -261,7 +261,7 @@ Items are circles of radius 12. You pick one up when your centre is within
 
 Random items appear every 6 s, starting 3 s into the match, at random free spots
 (inside the safe zone once it shrinks). Spawning pauses while 6 spawned items are on the map.
-Spawn weights: ammo 26, shield 18, health 18, gun 10, life 7, launcher 10, mines 15, laser 12, smoke 8, gas 8.
+Spawn weights: ammo 12, shield 18, health 18, gun 14, life 7, launcher 14, mines 15, laser 16, smoke 8, gas 8.
 
 ### 5.13 Bushes
 - Bushes are rectangles in `info.map.bushes`. They block nothing: players, bullets, grenades and
@@ -870,14 +870,14 @@ Every value below is also available at runtime as `info.rules.<path>`, for examp
 | `items.shieldAmount` | 50 | shield | Shield from a shield item (only picked up below max shield). |
 | `items.healthAmount` | 40 | hp | Health from a health item (only picked up below max health). |
 | `items.lifeAmount` | 1 | lives | Lives from an extra-life item (only picked up below max lives). |
-| `items.weights.ammo` | 26 | weight | Relative spawn weight of ammo items. |
+| `items.weights.ammo` | 12 | weight | Relative spawn weight of ammo items. |
 | `items.weights.shield` | 18 | weight | Relative spawn weight of shield items. |
 | `items.weights.health` | 18 | weight | Relative spawn weight of health items. |
-| `items.weights.gun` | 10 | weight | Relative spawn weight of gun items. |
+| `items.weights.gun` | 14 | weight | Relative spawn weight of gun items. |
 | `items.weights.life` | 7 | weight | Relative spawn weight of extra-life items. |
-| `items.weights.launcher` | 10 | weight | Relative spawn weight of grenade launcher items. |
+| `items.weights.launcher` | 14 | weight | Relative spawn weight of grenade launcher items. |
 | `items.weights.mines` | 15 | weight | Relative spawn weight of mines items. |
-| `items.weights.laser` | 12 | weight | Relative spawn weight of laser items. |
+| `items.weights.laser` | 16 | weight | Relative spawn weight of laser items. |
 | `items.weights.smoke` | 8 | weight | Relative spawn weight of smoke grenade items. |
 | `items.weights.gas` | 8 | weight | Relative spawn weight of gas grenade items. |
 

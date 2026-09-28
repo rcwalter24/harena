@@ -267,7 +267,7 @@ export const DEFAULT_CONFIG: GameConfig = {
     shieldAmount: 50,
     healthAmount: 40,
     lifeAmount: 1,
-    weights: { ammo: 26, shield: 18, health: 18, gun: 10, life: 7, launcher: 10, mines: 15, laser: 12, smoke: 8, gas: 8 },
+    weights: { ammo: 12, shield: 18, health: 18, gun: 14, life: 7, launcher: 14, mines: 15, laser: 16, smoke: 8, gas: 8 },
   },
   match: {
     defaultTimeLimit: 180,
