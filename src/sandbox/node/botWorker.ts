@@ -1,6 +1,6 @@
 import { parentPort } from 'node:worker_threads';
 import { COMMON_BLOCKED_GLOBALS, createHarness, neuterGlobals } from '../harness.ts';
-import type { ToWorker } from '../protocol.ts';
+import type { FromWorker, ToWorker } from '../protocol.ts';
 
 // Capture everything the harness needs before hiding globals from the bot.
 const port = parentPort!;
@@ -20,3 +20,4 @@ port.on('message', (msg: ToWorker) => {
 });
 
 neuterGlobals([...COMMON_BLOCKED_GLOBALS, 'process', 'require', 'Buffer', 'global']);
+port.postMessage({ type: 'booted' } satisfies FromWorker);

@@ -152,11 +152,18 @@ export class BotController implements Controller {
     }
     this.worker = worker;
 
-    type Ready = (FromWorker & { type: 'ready' }) | 'crashed' | 'timeout';
+    // Two clocks: the worker script gets workerStartMs to start (a hosted page may download
+    // it over a slow network); only then does the bot's load + init() get its own limit.
+    type Ready = (FromWorker & { type: 'ready' }) | 'crashed' | 'timeout' | 'no-start';
     let finish: (r: Ready) => void = () => {};
+    let booted: () => void = () => {};
     const ready = new Promise<Ready>((resolve) => {
       const limit = Math.max(this.sandbox.initBudgetMs, this.sandbox.hangLimitMs) + this.sandbox.graceMs;
-      const timer = setTimeout(() => finish('timeout'), limit);
+      let timer = setTimeout(() => finish('no-start'), this.sandbox.workerStartMs);
+      booted = () => {
+        clearTimeout(timer);
+        timer = setTimeout(() => finish('timeout'), limit);
+      };
       finish = (r) => {
         clearTimeout(timer);
         resolve(r);
@@ -169,7 +176,8 @@ export class BotController implements Controller {
     });
     worker.onMessage((msg) => {
       if (generation !== this.workerGeneration) return;
-      if (msg.type === 'ready') finish(msg);
+      if (msg.type === 'booted') booted();
+      else if (msg.type === 'ready') finish(msg);
       else this.onMessage(msg);
     });
 
@@ -183,8 +191,14 @@ export class BotController implements Controller {
 
     const result = await ready;
     if (generation !== this.workerGeneration) return;
-    if (result === 'timeout' || result === 'crashed') {
-      this.handleHang(result === 'timeout' ? 'init() did not return in time' : 'the worker crashed during init()');
+    if (result === 'timeout' || result === 'crashed' || result === 'no-start') {
+      this.handleHang(
+        result === 'timeout'
+          ? 'init() did not return in time'
+          : result === 'crashed'
+            ? 'the worker crashed during init()'
+            : `the sandbox worker did not start within ${this.sandbox.workerStartMs / 1000} s (slow network?)`,
+      );
       return;
     }
     if (result.error?.stage === 'load') {

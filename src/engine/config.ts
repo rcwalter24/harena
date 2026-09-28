@@ -106,6 +106,7 @@ export interface GameConfig {
     graceMs: number;
     hangLimitMs: number;
     failureStreakLimit: number;
+    workerStartMs: number;
   };
 }
 
@@ -205,6 +206,7 @@ export const DEFAULT_CONFIG: GameConfig = {
     graceMs: 40,
     hangLimitMs: 1000,
     failureStreakLimit: 5,
+    workerStartMs: 15000,
   },
 };
 
@@ -289,6 +291,10 @@ export const CONFIG_DOCS: Record<string, ConfigDoc> = {
   'match.minPlayers': { unit: 'players', description: 'Minimum players in a match.' },
   'match.maxPlayers': { unit: 'players', description: 'Maximum players in a match.' },
   'sandbox.initBudgetMs': { unit: 'ms', description: 'Time budget for init().' },
+  'sandbox.workerStartMs': {
+    unit: 'ms',
+    description: "Time for the sandbox worker itself to start (e.g. download on a slow network), before your bot's code is loaded; doesn't count toward any budget.",
+  },
   'sandbox.decideBudgetMs': { unit: 'ms', description: 'Time budget for one decide() call.' },
   'sandbox.graceMs': { unit: 'ms', description: 'Extra wall-clock wait for message passing before a reply counts as late.' },
   'sandbox.hangLimitMs': { unit: 'ms', description: 'A bot silent for this long is terminated and restarted once; a second hang disables it.' },

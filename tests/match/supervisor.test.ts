@@ -1,13 +1,14 @@
 import { readFileSync } from 'node:fs';
 import { afterEach, describe, expect, it } from 'vitest';
-import { BotController } from '../../src/match/supervisor.ts';
+import { BotController, type WorkerFactory } from '../../src/match/supervisor.ts';
+import type { FromWorker } from '../../src/sandbox/protocol.ts';
 import { MatchRunner } from '../../src/match/runner.ts';
 import { createNodeWorker } from '../../src/sandbox/node/host.ts';
 import type { Controller } from '../../src/match/controller.ts';
 import type { ActionInput } from '../../src/engine/types.ts';
 import { act, place, testGame } from '../helpers.ts';
 
-const SANDBOX = { initBudgetMs: 300, decideBudgetMs: 20, graceMs: 30, hangLimitMs: 400, failureStreakLimit: 3 };
+const SANDBOX = { initBudgetMs: 300, decideBudgetMs: 20, graceMs: 30, hangLimitMs: 400, failureStreakLimit: 3, workerStartMs: 15000 };
 
 function fixture(name: string): string {
   return readFileSync(new URL(`../fixtures/bots/${name}.js`, import.meta.url), 'utf8');
@@ -152,4 +153,56 @@ describe('BotController (node worker_threads)', () => {
     for (let i = 0; i < 80 && bot.status !== 'disabled'; i++) await sleep(20);
     expect(bot.status).toBe('disabled');
   }, 10_000);
+});
+
+describe('worker startup', () => {
+  /** A real Node worker whose script takes `delayMs` to start (like a slow download), or never starts. */
+  function slowWorker(delayMs: number | null): WorkerFactory {
+    return () => {
+      const inner = createNodeWorker();
+      let booted = false;
+      const held: FromWorker[] = [];
+      let deliver: (msg: FromWorker) => void = () => {};
+      inner.onMessage((msg) => {
+        if (msg.type === 'booted') return; // re-sent below, after the delay
+        if (booted) deliver(msg);
+        else held.push(msg);
+      });
+      return {
+        post: (msg) => inner.post(msg),
+        onMessage: (cb) => {
+          deliver = cb;
+          if (delayMs === null) return;
+          setTimeout(() => {
+            booted = true;
+            cb({ type: 'booted' });
+            for (const msg of held.splice(0)) cb(msg);
+          }, delayMs);
+        },
+        onError: (cb) => inner.onError(cb),
+        terminate: () => inner.terminate(),
+      };
+    };
+  }
+
+  async function start(factory: WorkerFactory, sandbox = SANDBOX) {
+    const state = testGame({ config: { sandbox } });
+    const bot = new BotController({ name: 'good', fileName: 'good.js', source: fixture('good'), botSeed: 's', createWorker: factory });
+    cleanups.push(() => bot.dispose());
+    await bot.init(state, 0);
+    return bot;
+  }
+
+  it('does not count a slow worker start against init()', async () => {
+    const bot = await start(slowWorker(SANDBOX.hangLimitMs + SANDBOX.initBudgetMs + 200));
+    expect(bot.status).toBe('running');
+    expect(bot.stats.restarts).toBe(0);
+  });
+
+  it('restarts, then disables, a worker that never starts', async () => {
+    const bot = await start(slowWorker(null), { ...SANDBOX, workerStartMs: 150 });
+    await sleep(400); // the restarted worker gets another 150 ms
+    expect(bot.status).toBe('disabled');
+    expect(bot.logs.some((l) => l.message.includes('did not start within 0.15 s'))).toBe(true);
+  });
 });

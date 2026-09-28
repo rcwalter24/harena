@@ -32,3 +32,4 @@ scope.addEventListener('message', (e: MessageEvent<ToWorker>) => {
 });
 
 neuterGlobals([...COMMON_BLOCKED_GLOBALS, 'importScripts', 'postMessage', 'close']);
+post({ type: 'booted' } satisfies FromWorker);

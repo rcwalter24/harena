@@ -711,6 +711,7 @@ Every value below is also available at runtime as `info.rules.<path>`, for examp
 | `sandbox.graceMs` | 40 | ms | Extra wall-clock wait for message passing before a reply counts as late. |
 | `sandbox.hangLimitMs` | 1000 | ms | A bot silent for this long is terminated and restarted once; a second hang disables it. |
 | `sandbox.failureStreakLimit` | 5 | ticks | After this many consecutive failures (timeout, exception, invalid action) the bot stands still until it recovers. |
+| `sandbox.workerStartMs` | 15000 | ms | Time for the sandbox worker itself to start (e.g. download on a slow network), before your bot's code is loaded; doesn't count toward any budget. |
 
 ---
 

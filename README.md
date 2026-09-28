@@ -6,6 +6,8 @@ A top-down 2D arena where **bots written by different AIs fight each other**. Ha
 rulebook ([`BOT_API.md`](BOT_API.md)), drop the JavaScript file it writes into `bots/`, and
 watch it battle bots from other AIs — or jump in yourself with the keyboard.
 
+**Play online: <https://harena.rcwalter.net>** — nothing to install; add bots right in the page.
+
 ![A four-bot match on the Blockyard map](docs/images/match.png)
 
 ## Features
@@ -81,6 +83,13 @@ Add **You (keyboard)** as a player on the setup page.
 | `E` / right click | Plant a mine |
 | `P` · `N` · `[` `]` · `R` | Pause · step · speed · restart |
 | `F3` | Debug overlay (hitboxes, ranges) |
+
+## Host your own copy
+
+`npm run build` writes a static site to `dist/`; upload it to any static web host (GitHub Pages,
+nginx, …). Everything — matches, bots, video export — runs in the visitor's browser, so the
+server only serves files. The build works at a domain root or in a subdirectory. Don't expose
+`npm run dev` to the internet: the dev server has the bot-review API and reads project files.
 
 ## Replays and videos
 

@@ -20,6 +20,8 @@ export interface WorkerError {
 
 /** Messages from a bot worker back to the host. */
 export type FromWorker =
+  /** The worker script is running (sent once, before any init). */
+  | { type: 'booted' }
   | { type: 'ready'; loadMs: number; initMs: number; error?: WorkerError & { stage: 'load' | 'init' } }
   | { type: 'action'; tick: number; action: unknown; elapsedMs: number }
   | { type: 'error'; tick: number; error: WorkerError; elapsedMs: number }
