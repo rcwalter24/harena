@@ -21,7 +21,10 @@ git history; this file lists the rules that must keep holding.
 - **Replays record normalized actions**: `MatchRunner` passes every action through
   `normalizeAction` before `step()`. Anything that mutates state outside `step()` (e.g. debug
   cheats) must go through `engine/debug.ts` and be recorded (`ReplayRecorder.recordCheat`).
-  `hashState` must cover all simulation state (add new fields to it).
+  `hashState` must cover all simulation state (add new fields to it). Visibility-only fields
+  (`noiseTimer`, `bushTicks`, `outOfBushTicks`) are deliberately not hashed, so replays recorded
+  before they existed still verify; new rules must load old replay configs with the rule off
+  (see `validateReplay`).
 - **Safe zone** (`systems/zone.ts`) is derived from the tick and config only, so it adds no
   state to hash. `zone.damagePerSecond: 0` turns it off (old replays without zone config are
   loaded that way); with it off, behaviour is identical to before the zone existed.

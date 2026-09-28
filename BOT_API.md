@@ -92,7 +92,7 @@ fixed order:
 8. **Deaths**: lives are lost, gear is dropped, kills are credited.
 9. **Pickups**.
 10. **Respawns**, and gun pads refill.
-11. **Cooldowns** count down.
+11. **Cooldowns** count down, and time spent in bushes is updated (see [§5.11](#511-bushes)).
 
 Consequences:
 - Your action always reacts to state that is one tick old.
@@ -210,7 +210,12 @@ Spawn weights: ammo 30, shield 25, health 25, gun 12, life 8, launcher 6, mines 
   explosions pass through them.
 - A player whose **centre** is inside a bush is **hidden** from an enemy, unless:
   - the enemy is within **90 u** (centre to centre), or its centre is in the same bush, or
-  - the hidden player **attacked or took damage in the last 1 s**.
+  - the hidden player **attacked or took damage in the last 1 s**, or
+  - the hidden player is **exposed**: it has spent **5 s** in bushes without a break.
+- **Hiding is limited.** Time in bushes adds up while your centre is in any bush (moving from one
+  bush to another does not reset it). After 5 s you are exposed, visible to everyone for as
+  long as you stay in a bush. Only **2 s outside all bushes** refills it; stepping out
+  for a moment does not. `hideLeft` in each player's view shows the seconds left (0 = exposed).
 - A hidden enemy stays in `state.players` with `visible: false`. Its `x`, `y`, `vx`, `vy` and
   `facing` are frozen at what you last saw, and `seenAgo` tells you how many seconds ago that was.
   Its hp, shield, lives and weapon stay visible, like a scoreboard.
@@ -328,6 +333,12 @@ export interface PlayerView {
   eliminated: boolean;
   /** Seconds until respawn while dead (0 when alive or eliminated). */
   respawnIn: number;
+  /**
+   * Seconds this player can still hide in bushes before being exposed (0 = exposed while in
+   * a bush). Counts down while its centre is in any bush; refills after a break outside.
+   * null if the match has no hiding limit.
+   */
+  hideLeft: number | null;
   /** Seconds of invulnerability left (0 = can be damaged). */
   invulnerable: number;
   /** Weapon in hand. */
@@ -635,6 +646,8 @@ Every value below is also available at runtime as `info.rules.<path>`, for examp
 |---|---|---|---|
 | `bushes.revealDistance` | 90 | u | An enemy in a bush is visible to you if the centres are at most this far apart. |
 | `bushes.noiseRevealTime` | 1 | s | A player in a bush stays visible this long after attacking or taking damage. |
+| `bushes.hideLimit` | 5 | s | After this long in bushes without a break you are exposed: visible to everyone while in a bush (0 = no limit). |
+| `bushes.rehideTime` | 2 | s | You must stay out of all bushes this long before you can hide again (the hide limit refills). |
 
 **zone**
 
@@ -722,6 +735,9 @@ Your bot receives the map in `info.map` and should work on any of them.
   forever (a common way for bots to stall). If the straight path is blocked, head for a corner
   of the blocking wall first; `pathTo` in the example bot shows a simple way.
 - **Detect being stuck.** If you ask to move but `self.vx/vy` is near 0, a wall is in the way.
+- **Don't camp.** Bushes are for ambushes and breaking line of sight, not for waiting out the match:
+  after 5 s you are exposed. Watch `self.hideLeft`, and watch an enemy's `hideLeft` to
+  know when it will show up.
 - **Mind the zone.** Head for the centre before `state.zone` reaches you. Bots that hide or wait
   for the time limit get pushed out, take damage every second, and are revealed in bushes.
   Once it collapses, the fight is on: whoever wins before the damage adds up takes the match.

@@ -6,7 +6,7 @@ import { handlePickups, refillGunPads, updateItemSpawner } from './systems/items
 import { handleDeaths, handleRespawns, placeAtSpawn } from './systems/lives.ts';
 import { applyMovement, applyTurning, applyWeaponSwitches } from './systems/movement.ts';
 import { checkMatchEnd } from './systems/victory.ts';
-import { initSightings, updateSightings } from './systems/visibility.ts';
+import { initSightings, updateHiding, updateSightings } from './systems/visibility.ts';
 import { applyZoneDamage } from './systems/zone.ts';
 import { IDLE_ACTION, type ActionInput, type GameEvent, type GameState, type MapData, type PlayerSetup, type PlayerState } from './types.ts';
 
@@ -88,6 +88,8 @@ export function createGame(opts: GameOptions): GameState {
       invulnerableTimer: 0,
       respawnTimer: 0,
       noiseTimer: 0,
+      bushTicks: 0,
+      outOfBushTicks: 0,
       lastDamagerId: -1,
       lastDamageWeapon: null,
       stats: emptyStats(),
@@ -132,7 +134,8 @@ function tickTimers(state: GameState): void {
  *
  * Order: weapon switches → turning → movement & collisions → attacks & mine
  * planting → bullets → grenades → due mines → explosions (with chain reactions) →
- * zone damage → deaths → pickups → respawns, gun pads & item spawns → timers → match end.
+ * zone damage → deaths → pickups → respawns, gun pads & item spawns → timers & bush
+ * hiding time → match end.
  */
 export function step(state: GameState, actions: readonly (ActionInput | undefined)[]): GameEvent[] {
   if (state.over) return [];
@@ -156,6 +159,7 @@ export function step(state: GameState, actions: readonly (ActionInput | undefine
   refillGunPads(state);
   updateItemSpawner(state);
   tickTimers(state);
+  updateHiding(state);
 
   state.tick++;
   updateSightings(state);

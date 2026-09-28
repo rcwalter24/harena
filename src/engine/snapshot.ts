@@ -1,5 +1,5 @@
 import type { BotState, EventView, InitInfo, PlayerView, ZoneView } from './botApi.ts';
-import { isVisibleTo } from './systems/visibility.ts';
+import { hideLeft, isVisibleTo } from './systems/visibility.ts';
 import { zoneAt, zoneEnabled } from './systems/zone.ts';
 import type { GameState, PlayerState } from './types.ts';
 
@@ -22,6 +22,7 @@ export function playerView(state: GameState, p: PlayerState): PlayerView {
     alive: p.alive,
     eliminated: p.eliminated,
     respawnIn: p.alive || p.eliminated ? 0 : t(p.respawnTimer),
+    hideLeft: Number.isFinite(hideLeft(state, p)) ? hideLeft(state, p) : null,
     invulnerable: p.alive ? t(p.invulnerableTimer) : 0,
     weapon: p.weapon,
     hasGun: p.hasGun,

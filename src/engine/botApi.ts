@@ -80,6 +80,12 @@ export interface PlayerView {
   eliminated: boolean;
   /** Seconds until respawn while dead (0 when alive or eliminated). */
   respawnIn: number;
+  /**
+   * Seconds this player can still hide in bushes before being exposed (0 = exposed while in
+   * a bush). Counts down while its centre is in any bush; refills after a break outside.
+   * null if the match has no hiding limit.
+   */
+  hideLeft: number | null;
   /** Seconds of invulnerability left (0 = can be damaged). */
   invulnerable: number;
   /** Weapon in hand. */

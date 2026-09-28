@@ -66,6 +66,8 @@ export interface GameConfig {
   bushes: {
     revealDistance: number;
     noiseRevealTime: number;
+    hideLimit: number;
+    rehideTime: number;
   };
   zone: {
     shrinkStart: number;
@@ -162,6 +164,8 @@ export const DEFAULT_CONFIG: GameConfig = {
   bushes: {
     revealDistance: 90,
     noiseRevealTime: 1,
+    hideLimit: 5,
+    rehideTime: 2,
   },
   zone: {
     shrinkStart: 45,
@@ -251,6 +255,8 @@ export const CONFIG_DOCS: Record<string, ConfigDoc> = {
   'explosions.selfDamageFactor': { unit: 'x', description: 'Multiplier for damage you take from your own explosions (1 = full damage).' },
   'bushes.revealDistance': { unit: 'u', description: 'An enemy in a bush is visible to you if the centres are at most this far apart.' },
   'bushes.noiseRevealTime': { unit: 's', description: 'A player in a bush stays visible this long after attacking or taking damage.' },
+  'bushes.hideLimit': { unit: 's', description: 'After this long in bushes without a break you are exposed: visible to everyone while in a bush (0 = no limit).' },
+  'bushes.rehideTime': { unit: 's', description: 'You must stay out of all bushes this long before you can hide again (the hide limit refills).' },
   'zone.shrinkStart': { unit: 's', description: 'Match time at which the safe zone starts shrinking (before that it covers the whole map).' },
   'zone.shrinkDuration': { unit: 's', description: 'The zone radius shrinks linearly to its final size over this long.' },
   'zone.finalRadius': { unit: 'u', description: 'Radius at the end of the first shrink. Its centre is the map centre.' },

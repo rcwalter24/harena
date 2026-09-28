@@ -1,5 +1,5 @@
 import type { ItemType } from '../engine/config.ts';
-import { bushAt, isVisibleTo } from '../engine/systems/visibility.ts';
+import { bushAt, hideLeft, isExposed, isVisibleTo } from '../engine/systems/visibility.ts';
 import { zoneAt, zoneEnabled } from '../engine/systems/zone.ts';
 import type { GameEvent, GameState, PlayerState } from '../engine/types.ts';
 
@@ -171,9 +171,9 @@ export class Renderer {
     if (opts.debug) this.drawDebugUnder(state, positions, shown);
     for (const p of state.players) {
       if (!p.alive || !shown.has(p.id)) continue;
-      // Players inside a bush are drawn faded; a bit less so while revealed by noise.
+      // Players inside a bush are drawn faded; a bit less so while revealed by noise or exposure.
       const inBush = bushAt(state, p.x, p.y) >= 0;
-      ctx.globalAlpha = !inBush ? 1 : p.noiseTimer > 0 ? 0.75 : 0.45;
+      ctx.globalAlpha = !inBush ? 1 : p.noiseTimer > 0 || isExposed(state, p) ? 0.75 : 0.45;
       this.drawPlayer(state, p, positions[p.id], p.id === opts.focusId);
       ctx.globalAlpha = 1;
     }
@@ -514,6 +514,27 @@ export class Renderer {
     ctx.beginPath();
     ctx.arc(pos.x + fx * r * 0.5, pos.y + fy * r * 0.5, 3.2, 0, Math.PI * 2);
     ctx.fill();
+
+    // Hiding time in a bush: a thin arc that runs out, then a dashed orange ring once exposed.
+    const hide = hideLeft(state, p);
+    if (Number.isFinite(hide) && bushAt(state, p.x, p.y) >= 0) {
+      const ringR = r + 9;
+      ctx.lineWidth = 2.5;
+      if (hide <= 0) {
+        ctx.strokeStyle = '#ffb74d';
+        ctx.setLineDash([4, 3]);
+        ctx.beginPath();
+        ctx.arc(pos.x, pos.y, ringR, 0, Math.PI * 2);
+        ctx.stroke();
+        ctx.setLineDash([]);
+      } else {
+        const f = hide / state.config.bushes.hideLimit;
+        ctx.strokeStyle = '#c5e1a5';
+        ctx.beginPath();
+        ctx.arc(pos.x, pos.y, ringR, -Math.PI / 2, -Math.PI / 2 + f * Math.PI * 2);
+        ctx.stroke();
+      }
+    }
 
     if (p.invulnerableTimer > 0 && Math.floor(performance.now() / 120) % 2 === 0) {
       ctx.strokeStyle = 'rgba(255,255,255,0.85)';

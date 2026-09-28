@@ -111,6 +111,10 @@ export interface PlayerState {
   respawnTimer: number;
   /** Ticks during which the player is revealed even inside a bush (after attacking or being hurt). */
   noiseTimer: number;
+  /** Ticks spent in bushes in the current stay (capped at the hide limit); visibility only. */
+  bushTicks: number;
+  /** Ticks since leaving bushes, while bushTicks > 0; visibility only. */
+  outOfBushTicks: number;
   /** Id of the last player who damaged this one during the current life, or -1. */
   lastDamagerId: number;
   lastDamageWeapon: DamageSource | null;

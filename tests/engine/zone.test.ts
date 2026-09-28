@@ -150,12 +150,14 @@ describe('safe zone', () => {
     }
   });
 
-  it('replays recorded before the zone existed play back with it off', () => {
-    const { zone: _zone, ...oldConfig } = DEFAULT_CONFIG;
+  it('replays recorded before the zone and the bush hiding limit existed play back with both off', () => {
+    const { zone: _zone, ...rest } = DEFAULT_CONFIG;
+    const oldConfig = { ...rest, bushes: { revealDistance: 90, noiseRevealTime: 1 } };
     const replay = validateReplay({
       format: 'harena-replay', version: 1, seed: 's', timeLimit: 0, ticks: 0, map: testMap(), config: oldConfig,
       players: [{ name: 'A', kind: 'dummy', source: 'idle' }], actions: [[]], createdAt: '',
     });
     expect(replay.config.zone.damagePerSecond).toBe(0);
+    expect(replay.config.bushes.hideLimit).toBe(0);
   });
 });

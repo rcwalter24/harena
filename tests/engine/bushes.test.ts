@@ -85,3 +85,76 @@ describe('bushes', () => {
     expect(see(s, 0, 1)).toBe(true);
   });
 });
+
+describe('bush hiding limit', () => {
+  // Default: hideLimit 5 s (150 ticks), rehideTime 2 s (60 ticks).
+  const idle = (s: GameState, ticks: number) => {
+    for (let i = 0; i < ticks; i++) step(s, []);
+  };
+
+  it('exposes a player after 5 s in a bush without a break', () => {
+    const s = bushGame(2);
+    place(s, 0, 500, 500);
+    place(s, 1, 100, 900);
+    idle(s, 149);
+    expect(see(s, 1, 0)).toBe(false);
+    expect(buildBotState(s).players[0].hideLeft).toBeCloseTo(1 / 30);
+    idle(s, 1);
+    expect(see(s, 1, 0)).toBe(true);
+    expect(buildBotState(s).players[0].hideLeft).toBe(0);
+    idle(s, 100); // stays exposed while it stays in the bush
+    expect(see(s, 1, 0)).toBe(true);
+  });
+
+  it('does not refill after a short step outside, only after rehideTime out of all bushes', () => {
+    const s = bushGame(2);
+    place(s, 1, 100, 900);
+    place(s, 0, 500, 500);
+    idle(s, 150);
+    place(s, 0, 300, 300); // out for 1 s
+    idle(s, 30);
+    place(s, 0, 500, 500);
+    idle(s, 1);
+    expect(see(s, 1, 0)).toBe(true);
+    place(s, 0, 300, 300); // out for 2 s
+    idle(s, 60);
+    place(s, 0, 500, 500);
+    idle(s, 1);
+    expect(see(s, 1, 0)).toBe(false);
+  });
+
+  it('counts time across different bushes', () => {
+    const s = bushGame(2);
+    place(s, 1, 100, 900);
+    place(s, 0, 500, 500);
+    idle(s, 100);
+    place(s, 0, 850, 150); // the other bush
+    idle(s, 50);
+    expect(see(s, 1, 0)).toBe(true);
+  });
+
+  it('respawning refills it', () => {
+    const s = bushGame(2);
+    place(s, 1, 100, 900);
+    place(s, 0, 500, 500);
+    idle(s, 150);
+    s.players[0].hp = 0;
+    s.players[0].invulnerableTimer = 0;
+    idle(s, 61);
+    expect(s.players[0].alive).toBe(true);
+    expect(buildBotState(s).players[0].hideLeft).toBe(5);
+  });
+
+  it('is off with hideLimit 0', () => {
+    const map = { ...testMap(), bushes: [BUSH] };
+    const s = createGame({
+      map, seed: 'b', timeLimit: 0, players: [{ name: 'A' }, { name: 'B' }],
+      config: mergeConfig(DEFAULT_CONFIG, { items: { maxOnMap: 0 }, bushes: { hideLimit: 0 } }),
+    });
+    place(s, 0, 500, 500);
+    place(s, 1, 100, 900);
+    idle(s, 600);
+    expect(see(s, 1, 0)).toBe(false);
+    expect(buildBotState(s).players[0].hideLeft).toBeNull();
+  });
+});
