@@ -50,6 +50,9 @@ export function hashState(state: GameState): string {
   }
   for (const c of state.clouds) {
     mix(c.id); mix(c.x); mix(c.y); mix(c.age); mix(c.ticksLeft); mix(c.kind === 'gas' ? 1 : 0);
+    for (const h of c.holes) {
+      mix(h.x); mix(h.y); mix(h.radius); mix(h.age);
+    }
   }
   for (const it of state.items) {
     mix(it.id); mix(it.x); mix(it.y); mix(it.ammo);

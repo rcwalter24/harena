@@ -1,11 +1,11 @@
 import { secondsToTicks } from '../engine/config.ts';
 import { blastDamageAt, grenadeImpact } from '../engine/systems/explosives.ts';
 import { laserSegments } from '../engine/systems/laser.ts';
-import { cloudRadius } from '../engine/systems/throwables.ts';
+import { cloudRadius, holeRadius } from '../engine/systems/throwables.ts';
 import { pathAroundWalls } from '../engine/geometry.ts';
 import { bushAt, hideLeft, isExposed, isVisibleTo } from '../engine/systems/visibility.ts';
 import { zoneAt, zoneEnabled } from '../engine/systems/zone.ts';
-import type { Cloud, GameEvent, GameState, PlayerState } from '../engine/types.ts';
+import type { Cloud, CloudHole, GameEvent, GameState, PlayerState } from '../engine/types.ts';
 import { drawItemIcon } from './icons.ts';
 
 export const PLAYER_COLORS = ['#4fc3f7', '#ff7043', '#9ccc65', '#ba68c8', '#ffd54f', '#4db6ac', '#f06292', '#a1887f'];
@@ -104,6 +104,8 @@ export class Renderer {
   private offsetY = 0;
   private effects: Effect[] = [];
   private fields = new Map<string, BlastField>();
+  /** Scratch layer for clouds with holes in them. */
+  private cloudLayer: OffscreenCanvas | HTMLCanvasElement | null = null;
 
   constructor(canvas: HTMLCanvasElement | OffscreenCanvas, options: RendererOptions = {}) {
     this.canvas = canvas;
@@ -174,6 +176,38 @@ export class Renderer {
       const damage = blastDamageAt(state, source, x, y, px, py);
       return damage > 0 ? 0.12 + 0.78 * Math.min(1, damage / centerDamage) : 0;
     });
+  }
+
+  /** Where a hole blown in a cloud is clear (the blast's reach around walls), at its full size. */
+  private holeMask(state: GameState, h: CloudHole): BlastField {
+    return this.shadedField(`${state.map.id}|hole|${h.x}|${h.y}|${h.radius}`, state, h.x, h.y, h.radius, [0, 0, 0], (px, py) =>
+      pathAroundWalls(h.x, h.y, px, py, state.map.walls, h.radius) === Infinity ? 0 : 1);
+  }
+
+  /** The cloud's image with its holes erased (each shrinking as it closes). */
+  private cloudImage(state: GameState, c: Cloud, field: BlastField): CanvasImageSource {
+    const holes = c.holes.filter((h) => holeRadius(state, h) > 0);
+    if (holes.length === 0) return field.image;
+    const px = Math.round(field.size / FIELD_CELL);
+    if (!this.cloudLayer) this.cloudLayer = typeof OffscreenCanvas !== 'undefined' ? new OffscreenCanvas(px, px) : document.createElement('canvas');
+    const layer = this.cloudLayer;
+    layer.width = px; // also clears it
+    layer.height = px;
+    const lctx = layer.getContext('2d') as CanvasRenderingContext2D | OffscreenCanvasRenderingContext2D;
+    lctx.drawImage(field.image, 0, 0);
+    lctx.globalCompositeOperation = 'destination-out';
+    const scale = px / field.size;
+    for (const h of holes) {
+      const mask = this.holeMask(state, h);
+      lctx.save();
+      lctx.setTransform(scale, 0, 0, scale, -field.x * scale, -field.y * scale);
+      lctx.beginPath();
+      lctx.arc(h.x, h.y, holeRadius(state, h), 0, Math.PI * 2);
+      lctx.clip();
+      lctx.drawImage(mask.image, mask.x, mask.y, mask.size, mask.size);
+      lctx.restore();
+    }
+    return layer;
   }
 
   /** A cloud's full-size shape (it flows around walls), densest at the centre. */
@@ -528,7 +562,7 @@ export class Renderer {
       // Gas throbs on each damage second; smoke breathes slowly.
       const pulse = kind === 'gas' ? 0.75 + 0.25 * (1 - (c.age % rate) / rate) ** 2 : 0.92 + 0.08 * Math.sin(c.age / (rate * 0.8) + c.id);
       ctx.globalAlpha = fade * pulse;
-      ctx.drawImage(field.image, field.x, field.y, field.size, field.size);
+      ctx.drawImage(this.cloudImage(state, c, field), field.x, field.y, field.size, field.size);
       ctx.restore();
     }
   }

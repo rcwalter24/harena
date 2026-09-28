@@ -3,6 +3,7 @@ import { length } from '../dmath.ts';
 import { lineOfSight, pathAroundWalls, segmentCircleHit, segmentRectHit } from '../geometry.ts';
 import { solidRects, type ActionInput, type Explosion, type GameState, type PlayerState } from '../types.ts';
 import { applyDamage } from './combat.ts';
+import { blowHoles } from './throwables.ts';
 
 /** Plant mines for players who asked to (any weapon in hand, even while switching). */
 export function plantMines(state: GameState, actions: readonly ActionInput[]): void {
@@ -164,6 +165,8 @@ export function resolveExplosions(state: GameState, queue: Explosion[]): void {
       if (dealt > 0) hitIds.push(p.id);
     }
     if (e.source === 'grenade' && hitIds.some((id) => id !== e.ownerId)) owner.stats.grenadeHits++;
+    // The blast also clears smoke and gas where it reaches, for a moment.
+    blowHoles(state, e.x, e.y, e.radius + config.player.radius);
     state.explosions.push(e);
     state.events.push({ type: 'explosion', tick: state.tick, ownerId: e.ownerId, source: e.source, sourceId: e.sourceId, x: e.x, y: e.y, radius: e.radius, hitIds });
   }

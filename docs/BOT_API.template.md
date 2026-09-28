@@ -208,8 +208,11 @@ Consequences:
   counts toward the hiding limit.
 - **Gas** (radius {{gas.radius}} u, lasts {{gas.duration}} s): at each whole second of the cloud's life (see `nextDamageIn`),
   every player whose centre is inside takes **{{gas.damagePerSecond}}** damage, **the thrower included**. Inside gas
-  your top speed is multiplied by (1 − {{gas.slow}}). Walls do not stop gas. Gas damage shows up in events
-  as `weapon: 'gas'`, and kills go to the thrower.
+  your top speed is multiplied by (1 − {{gas.slow}}). Gas damage shows up in events as `weapon: 'gas'`, and kills
+  go to the thrower.
+- **Explosions blow holes in clouds.** Where a blast reaches (the same area it could damage, around
+  walls), smoke and gas are cleared: nobody there is hidden by that smoke or hurt or slowed by that
+  gas. The hole closes toward the blast point over {{explosions.clearTime}} s. Each cloud lists its open `holes`.
 
 ### 5.9 Explosions
 - **Explosions go around wall corners, not through walls.** The distance that counts is the length of

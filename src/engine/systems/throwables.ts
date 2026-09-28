@@ -1,7 +1,7 @@
 import { secondsToTicks } from '../config.ts';
 import { direction, length } from '../dmath.ts';
 import { pathAroundWalls, segmentRectEntry, type SegmentEntry } from '../geometry.ts';
-import { solidRects, type ActionInput, type Cloud, type GameState } from '../types.ts';
+import { solidRects, type ActionInput, type Cloud, type CloudHole, type GameState } from '../types.ts';
 import { applyDamage } from './combat.ts';
 
 /**
@@ -79,7 +79,7 @@ export function updateThrowables(state: GameState): void {
     const settings = g.kind === 'smoke' ? config.smoke : config.gas;
     const cloud: Cloud = {
       id: state.nextEntityId++, ownerId: g.ownerId, kind: g.kind, x: g.x, y: g.y,
-      radius: settings.radius, age: 0, ticksLeft: Math.max(1, secondsToTicks(settings.duration, config)),
+      radius: settings.radius, age: 0, ticksLeft: Math.max(1, secondsToTicks(settings.duration, config)), holes: [],
     };
     state.clouds.push(cloud);
     state.events.push({ type: 'cloud', tick: state.tick, cloudId: cloud.id, ownerId: cloud.ownerId, kind: cloud.kind, x: cloud.x, y: cloud.y, radius: cloud.radius });
@@ -101,8 +101,28 @@ export function cloudRadius(state: GameState, cloud: Cloud): number {
 export function insideCloud(state: GameState, cloud: Cloud, x: number, y: number): boolean {
   const r = cloudRadius(state, cloud);
   if (length(x - cloud.x, y - cloud.y) > r) return false;
-  if (state.config.throwing.cloudsAroundCorners <= 0) return true;
-  return pathAroundWalls(cloud.x, cloud.y, x, y, state.map.walls, r) !== Infinity;
+  if (state.config.throwing.cloudsAroundCorners > 0 && pathAroundWalls(cloud.x, cloud.y, x, y, state.map.walls, r) === Infinity) return false;
+  return !cloud.holes.some((h) => inHole(state, h, x, y));
+}
+
+/** A hole's radius now: it closes linearly over explosions.clearTime. */
+export function holeRadius(state: GameState, hole: CloudHole): number {
+  const ticks = secondsToTicks(state.config.explosions.clearTime, state.config);
+  return ticks > 0 ? hole.radius * Math.max(0, 1 - hole.age / ticks) : 0;
+}
+
+function inHole(state: GameState, hole: CloudHole, x: number, y: number): boolean {
+  const r = holeRadius(state, hole);
+  if (r <= 0 || length(x - hole.x, y - hole.y) > r) return false;
+  return pathAroundWalls(hole.x, hole.y, x, y, state.map.walls, r) !== Infinity;
+}
+
+/** An explosion at (x, y) reaching `radius` blows a hole in every cloud it touches. */
+export function blowHoles(state: GameState, x: number, y: number, radius: number): void {
+  if (state.config.explosions.clearTime <= 0) return;
+  for (const c of state.clouds) {
+    if (length(c.x - x, c.y - y) <= c.radius + radius) c.holes.push({ x, y, radius, age: 0 });
+  }
 }
 
 /** Is the point inside any gas cloud? (Players there move slower.) */
@@ -116,6 +136,8 @@ export function updateClouds(state: GameState): void {
   for (const cloud of state.clouds) {
     cloud.age++;
     cloud.ticksLeft--;
+    for (const h of cloud.holes) h.age++;
+    if (cloud.holes.length > 0) cloud.holes = cloud.holes.filter((h) => holeRadius(state, h) > 0);
     if (cloud.kind !== 'gas' || cloud.age % config.tickRate !== 0) continue;
     const owner = state.players[cloud.ownerId];
     for (const p of state.players) {

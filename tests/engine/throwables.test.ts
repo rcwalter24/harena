@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { DEFAULT_CONFIG } from '../../src/engine/config.ts';
 import { step } from '../../src/engine/game.ts';
+import { resolveExplosions } from '../../src/engine/systems/explosives.ts';
 import { validateReplay } from '../../src/engine/replay.ts';
 import { buildBotState, viewForPlayer } from '../../src/engine/snapshot.ts';
 import { cloudRadius, insideCloud } from '../../src/engine/systems/throwables.ts';
@@ -134,5 +135,40 @@ describe('smoke and gas grenades', () => {
     expect(replay.config.items.weights).toMatchObject({ smoke: 0, gas: 0 });
     expect(replay.config.smoke.maxCarry).toBe(0);
     expect(replay.config.gas.maxCarry).toBe(0);
+  });
+});
+
+describe('explosions and clouds', () => {
+  it('blow a hole in smoke and gas that closes over clearTime', () => {
+    const s = testGame();
+    place(s, 0, 200, 500, 0);
+    throwAndSettle(s, 0, 'smoke', 200); // cloud at (400, 500)
+    for (let i = 0; i < 40; i++) step(s, []);
+    const c = s.clouds[0];
+    expect(insideCloud(s, c, 400, 500)).toBe(true);
+    resolveExplosions(s, [{ ownerId: 1, source: 'grenade', sourceId: 99, x: 420, y: 500, radius: DEFAULT_CONFIG.launcher.blastRadius }]);
+    expect(c.holes).toHaveLength(1);
+    expect(insideCloud(s, c, 400, 500)).toBe(false); // blown clear
+    expect(insideCloud(s, c, 400, 600)).toBe(true); // out of the blast's reach: still smoky
+    expect(buildBotState(s).clouds[0].holes[0]).toMatchObject({ x: 420, y: 500 });
+    const close = DEFAULT_CONFIG.explosions.clearTime * 30;
+    for (let i = 0; i < close * 0.8; i++) step(s, []);
+    // The hole shrinks toward the blast point: at 80% of clearTime it is 20% of its size, so 20 u away is smoky again.
+    expect(insideCloud(s, c, 400, 500)).toBe(true);
+    for (let i = 0; i < close; i++) step(s, []);
+    expect(c.holes).toHaveLength(0);
+  });
+
+  it('a gas hole means no gas damage there', () => {
+    const s = testGame();
+    place(s, 0, 200, 500, 0);
+    place(s, 1, 400, 520);
+    throwAndSettle(s, 0, 'gas', 200);
+    for (let i = 0; i < 20; i++) step(s, []);
+    const hp = s.players[1].hp;
+    s.clouds[0].holes = [{ x: 400, y: 520, radius: 60, age: 0 }];
+    const untilHit = 30 - (s.clouds[0].age % 30);
+    for (let i = 0; i < untilHit; i++) step(s, []);
+    expect(s.players[1].hp).toBe(hp);
   });
 });

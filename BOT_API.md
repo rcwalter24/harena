@@ -208,8 +208,11 @@ Consequences:
   counts toward the hiding limit.
 - **Gas** (radius 100 u, lasts 6 s): at each whole second of the cloud's life (see `nextDamageIn`),
   every player whose centre is inside takes **12** damage, **the thrower included**. Inside gas
-  your top speed is multiplied by (1 − 0.4). Walls do not stop gas. Gas damage shows up in events
-  as `weapon: 'gas'`, and kills go to the thrower.
+  your top speed is multiplied by (1 − 0.4). Gas damage shows up in events as `weapon: 'gas'`, and kills
+  go to the thrower.
+- **Explosions blow holes in clouds.** Where a blast reaches (the same area it could damage, around
+  walls), smoke and gas are cleared: nobody there is hidden by that smoke or hurt or slowed by that
+  gas. The hole closes toward the blast point over 1.5 s. Each cloud lists its open `holes`.
 
 ### 5.9 Explosions
 - **Explosions go around wall corners, not through walls.** The distance that counts is the length of
@@ -508,6 +511,11 @@ export interface CloudView {
   timeLeft: number;
   /** Gas only: seconds until its next damage (at each whole second of its life); null for smoke. */
   nextDamageIn: number | null;
+  /**
+   * Holes blown by explosions: points within `radius` of (x, y), measured around walls, are clear
+   * of this cloud. Each hole closes over rules.explosions.clearTime seconds.
+   */
+  holes: { x: number; y: number; radius: number }[];
 }
 
 /** An explosion that happened during the last tick. */
@@ -787,6 +795,7 @@ Every value below is also available at runtime as `info.rules.<path>`, for examp
 |---|---|---|---|
 | `explosions.selfDamageFactor` | 1 | x | Multiplier for damage you take from your own explosions (1 = full damage). |
 | `explosions.aroundCorners` | 1 | 0/1 | Explosions spread around wall corners (1): the distance that counts is the shortest path around walls. With 0 a wall on the straight line shields completely. |
+| `explosions.clearTime` | 1.5 | s | An explosion blows a hole in smoke and gas clouds (the blast's reach, around walls); it closes again over this long (0 = explosions don't affect clouds). |
 
 **throwing**
 

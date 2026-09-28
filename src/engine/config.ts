@@ -77,6 +77,7 @@ export interface GameConfig {
   explosions: {
     selfDamageFactor: number;
     aroundCorners: number;
+    clearTime: number;
   };
   throwing: {
     maxDistance: number;
@@ -212,6 +213,7 @@ export const DEFAULT_CONFIG: GameConfig = {
   explosions: {
     selfDamageFactor: 1,
     aroundCorners: 1,
+    clearTime: 1.5,
   },
   throwing: {
     maxDistance: 350,
@@ -339,6 +341,7 @@ export const CONFIG_DOCS: Record<string, ConfigDoc> = {
   'mines.centerDamage': { unit: 'hp', description: 'Mine damage at the centre of the explosion.' },
   'mines.edgeDamage': { unit: 'hp', description: 'Mine damage at the edge of the blast radius (linear falloff in between).' },
   'explosions.aroundCorners': { unit: '0/1', description: 'Explosions spread around wall corners (1): the distance that counts is the shortest path around walls. With 0 a wall on the straight line shields completely.' },
+  'explosions.clearTime': { unit: 's', description: "An explosion blows a hole in smoke and gas clouds (the blast's reach, around walls); it closes again over this long (0 = explosions don't affect clouds)." },
   'explosions.selfDamageFactor': { unit: 'x', description: 'Multiplier for damage you take from your own explosions (1 = full damage).' },
   'throwing.maxDistance': { unit: 'u', description: 'Farthest a smoke or gas grenade slides before stopping (you choose any distance up to this).' },
   'throwing.deceleration': { unit: 'u/s²', description: 'A thrown grenade slows down at this constant rate until it stops.' },

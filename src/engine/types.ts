@@ -197,6 +197,18 @@ export interface Cloud {
   age: number;
   /** Ticks until it disappears. */
   ticksLeft: number;
+  /** Holes blown by explosions, closing over time. */
+  holes: CloudHole[];
+}
+
+/** Part of a cloud blown away by an explosion: clear within `radius` (around walls), shrinking as it ages. */
+export interface CloudHole {
+  x: number;
+  y: number;
+  /** Radius when it was blown. */
+  radius: number;
+  /** Ticks since it was blown. */
+  age: number;
 }
 
 export interface Explosion {

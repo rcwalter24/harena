@@ -200,6 +200,11 @@ export interface CloudView {
   timeLeft: number;
   /** Gas only: seconds until its next damage (at each whole second of its life); null for smoke. */
   nextDamageIn: number | null;
+  /**
+   * Holes blown by explosions: points within `radius` of (x, y), measured around walls, are clear
+   * of this cloud. Each hole closes over rules.explosions.clearTime seconds.
+   */
+  holes: { x: number; y: number; radius: number }[];
 }
 
 /** An explosion that happened during the last tick. */
