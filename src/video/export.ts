@@ -3,7 +3,7 @@ import { ReplayPlayer, type Replay } from '../engine/replay.ts';
 import { Renderer } from '../render/renderer.ts';
 import { ARENA, drawGameFrame, drawIntro, drawOutro, feedLines, formatClock, VIDEO_H, VIDEO_W, type FeedEntry, type FrameInfo } from './frame.ts';
 import { isActionEvent, planFrames, VIDEO_FPS } from './timeline.ts';
-import { t } from '../ui/i18n.ts';
+import { getLang, inLang, t, type Lang } from '../ui/i18n.ts';
 
 const INTRO_SECONDS = 2;
 const OUTRO_SECONDS = 4;
@@ -12,6 +12,8 @@ const BITRATE = 6_000_000;
 export interface VideoExportOptions {
   /** Play stretches without hits at 4×. */
   fastForward: boolean;
+  /** Language of the text in the video (defaults to the page's). */
+  lang?: Lang;
   onProgress?: (framesDone: number, framesTotal: number) => void;
   signal?: AbortSignal;
 }
@@ -79,12 +81,14 @@ export async function exportReplayVideo(replay: Replay, opts: VideoExportOptions
   let now = 0; // video time in ms: drives effect animations
   const renderer = new Renderer(arenaCanvas, { size: { width: ARENA.w, height: ARENA.h }, clock: () => now });
 
+  // Everything drawn into the video is in the video's language; the page keeps its own.
+  const lang = opts.lang ?? getLang();
   const player = new ReplayPlayer(replay);
-  const info: FrameInfo = {
+  const info: FrameInfo = inLang(lang, () => ({
     title: `${t(replay.map.name)} · ${t('seed {seed}', { seed: replay.seed })}`,
     sources: replay.players.map((p) => (p.kind === 'bot' ? p.source ?? 'bot' : p.kind === 'human' ? t('human player') : t('dummy: {kind}', { kind: t(p.source ?? '') }))),
     timeLimitTicks: player.state.timeLimitTicks,
-  };
+  }));
   const feed: FeedEntry[] = [];
 
   const output = new Output({ format: encoding.format, target: new BufferTarget() });
@@ -107,24 +111,28 @@ export async function exportReplayVideo(replay: Replay, opts: VideoExportOptions
   };
   const renderArena = () => renderer.render(player.state, null, 1, { debug: false });
 
-  const limit = replay.timeLimit > 0 ? t('{time} time limit', { time: formatClock(replay.timeLimit * tickRate, tickRate) }) : t('no time limit');
-  renderArena();
-  drawGameFrame(ctx, arenaCanvas, player.state, info, feed, now, false);
-  drawIntro(ctx, player.state, info, `${t('seed {seed}', { seed: replay.seed })} · ${limit}`);
+  inLang(lang, () => {
+    const limit = replay.timeLimit > 0 ? t('{time} time limit', { time: formatClock(replay.timeLimit * tickRate, tickRate) }) : t('no time limit');
+    renderArena();
+    drawGameFrame(ctx, arenaCanvas, player.state, info, feed, now, false);
+    drawIntro(ctx, player.state, info, `${t('seed {seed}', { seed: replay.seed })} · ${limit}`);
+  });
   for (let i = 0; i < introFrames; i++) await emit();
 
   for (const frame of frames) {
-    while (player.state.tick < frame.tick && !player.done) {
-      const events = player.stepOnce();
-      renderer.addEvents(events, player.state);
-      for (const parts of feedLines(events, player.state)) feed.push({ parts, born: now });
-    }
-    renderArena();
-    drawGameFrame(ctx, arenaCanvas, player.state, info, feed, now, frame.fast);
+    inLang(lang, () => {
+      while (player.state.tick < frame.tick && !player.done) {
+        const events = player.stepOnce();
+        renderer.addEvents(events, player.state);
+        for (const parts of feedLines(events, player.state)) feed.push({ parts, born: now });
+      }
+      renderArena();
+      drawGameFrame(ctx, arenaCanvas, player.state, info, feed, now, frame.fast);
+    });
     await emit();
   }
 
-  drawOutro(ctx, player.state);
+  inLang(lang, () => drawOutro(ctx, player.state));
   for (let i = 0; i < outroFrames; i++) await emit();
 
   await output.finalize();

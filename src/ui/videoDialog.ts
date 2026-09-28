@@ -1,8 +1,9 @@
 import type { Replay } from '../engine/replay.ts';
 import { replayFileName } from './matchView.ts';
-import { t } from './i18n.ts';
+import { getLang, t, type Lang } from './i18n.ts';
 
 const FAST_FORWARD_KEY = 'harena.video.fastForward';
+const LANG_KEY = 'harena.video.lang';
 
 function loadFastForward(): boolean {
   try {
@@ -17,6 +18,25 @@ function saveFastForward(on: boolean): void {
     localStorage.setItem(FAST_FORWARD_KEY, String(on));
   } catch {
     // Not remembered; the default stays on.
+  }
+}
+
+/** The language last chosen for videos, or the page's. */
+function loadVideoLang(): Lang {
+  try {
+    const saved = localStorage.getItem(LANG_KEY);
+    if (saved === 'en' || saved === 'zh') return saved;
+  } catch {
+    // Fall through to the page's language.
+  }
+  return getLang();
+}
+
+function saveVideoLang(lang: Lang): void {
+  try {
+    localStorage.setItem(LANG_KEY, lang);
+  } catch {
+    // Not remembered; the page's language is the default next time.
   }
 }
 
@@ -38,6 +58,9 @@ export function openVideoExport(replay: Replay): void {
       <h2>${t('Export video')}</h2>
       <p class="muted">${t('1920×1080 video of this replay with a title card and final results, rendered in your browser. MP4 (H.264) plays everywhere and can be uploaded to video sites.')}</p>
       <label class="check"><input type="checkbox" id="video-ff" /> ${t('Speed up quiet stretches (4× when nobody lands a hit)')}</label>
+      <label class="field">${t('Video language')}
+        <select id="video-lang"><option value="en">English</option><option value="zh">中文</option></select>
+      </label>
       <div class="video-progress hidden">
         <progress id="video-bar" max="1" value="0"></progress>
         <div id="video-status" class="note"></div>
@@ -50,11 +73,13 @@ export function openVideoExport(replay: Replay): void {
   document.body.appendChild(root);
   const $ = <T extends HTMLElement>(id: string) => root.querySelector<T>(`#${id}`)!;
   const ff = $<HTMLInputElement>('video-ff');
+  const langSelect = $<HTMLSelectElement>('video-lang');
   const go = $<HTMLButtonElement>('video-go');
   const close = $<HTMLButtonElement>('video-close');
   const bar = $<HTMLProgressElement>('video-bar');
   const status = $('video-status');
   ff.checked = loadFastForward();
+  langSelect.value = loadVideoLang();
   let abort: AbortController | null = null;
 
   const dismiss = () => {
@@ -66,9 +91,12 @@ export function openVideoExport(replay: Replay): void {
 
   go.onclick = async () => {
     saveFastForward(ff.checked);
+    const lang = langSelect.value === 'zh' ? 'zh' : 'en';
+    saveVideoLang(lang);
     abort = new AbortController();
     go.disabled = true;
     ff.disabled = true;
+    langSelect.disabled = true;
     close.textContent = t('Cancel');
     root.querySelector('.video-progress')!.classList.remove('hidden');
     status.textContent = t('Preparing…');
@@ -77,6 +105,7 @@ export function openVideoExport(replay: Replay): void {
       const { exportReplayVideo } = await import('../video/export.ts');
       const video = await exportReplayVideo(replay, {
         fastForward: ff.checked,
+        lang,
         signal: abort.signal,
         onProgress: (done, total) => {
           bar.value = done / total;
@@ -95,6 +124,7 @@ export function openVideoExport(replay: Replay): void {
       abort = null;
       go.disabled = false;
       ff.disabled = false;
+      langSelect.disabled = false;
       close.textContent = t('Close');
     }
   };

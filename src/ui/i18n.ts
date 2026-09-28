@@ -43,6 +43,20 @@ export function setLang(lang: Lang): void {
   applyLang();
 }
 
+/**
+ * Run `fn` with `lang` as the language, then switch back. Only for synchronous work (e.g. drawing
+ * a video frame in the language chosen for the video); the page itself keeps its language.
+ */
+export function inLang<T>(lang: Lang, fn: () => T): T {
+  const saved = current;
+  current = lang;
+  try {
+    return fn();
+  } finally {
+    current = saved;
+  }
+}
+
 /** Locale for dates and numbers: Chinese, or the browser's own for English. */
 export function locale(): string | undefined {
   return current === 'zh' ? 'zh-CN' : undefined;
@@ -252,6 +266,7 @@ export const ZH: Record<string, string> = {
   'Back to setup': '返回设置',
 
   // Video export
+  'Video language': '视频语言',
   'Export video': '导出视频',
   '1920×1080 video of this replay with a title card and final results, rendered in your browser. MP4 (H.264) plays everywhere and can be uploaded to video sites.':
     '把这段回放导出为 1920×1080 视频，包含片头和最终结算，在你的浏览器里渲染。MP4（H.264）格式到处都能播放，可以直接上传到视频网站。',
