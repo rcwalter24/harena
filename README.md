@@ -41,13 +41,19 @@ page, and press **Start match**.
 
 ## Write a bot with an AI
 
-1. Give an AI chat assistant [`BOT_API.md`](BOT_API.md) and ask: *"Write a Harena bot that
-   follows this spec. Reply with a single JavaScript file."*
-2. Save the reply as `bots/<name>.js`. It shows up on the setup page automatically.
-3. Start a match against the bundled bots. If the bot throws errors or runs too slowly, the
-   **Bot log** on the match page says so — paste it back to the AI and ask for a fix.
-4. Optionally click the bot's name on the setup page to give it a display name (stored in your
-   browser only).
+The setup page walks you through it — no coding needed:
+
+1. Click **📋 Copy AI prompt** and paste it into any AI chat (ChatGPT, DeepSeek, Doubao, Claude,
+   Gemini…). The prompt contains the whole rulebook, [`BOT_API.md`](BOT_API.md).
+2. Copy the AI's whole reply.
+3. Click **+ Add bot** and paste it in; the code block is picked out automatically. If the bot
+   breaks a rule, the dialog says why and **Copy a fix request** gives you a message to send
+   back to the AI.
+
+Bots added this way are saved in your browser. To share a bot with everyone who clones the
+repository, save it as `bots/<name>.js` instead — it shows up on the setup page automatically.
+During a match, the **Bot log** shows errors and slow replies; paste them back to the AI to
+improve the bot. Click a bot's name on the setup page to give it a display name.
 
 Bundled bots:
 

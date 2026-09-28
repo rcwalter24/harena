@@ -5,7 +5,8 @@ import { drawMapPreview } from '../render/mapPreview.ts';
 import { DUMMY_KINDS, type DummyKind } from '../match/dummies.ts';
 import type { BotReview } from '../review/jev.ts';
 import { playerColor } from '../render/renderer.ts';
-import { BOTS, displayName, fetchReviews, getBot, hasAlias, MAX_ALIAS_LENGTH, requestReview, reviewBadge, setAlias, type BotEntry, type ReviewBadge } from './bots.ts';
+import { botPrompt, copyText, openBotEditor, openCopyFallback } from './botDialog.ts';
+import { CAN_REVIEW, deleteLocalBot, displayName, fetchReviews, getBot, hasAlias, listBots, MAX_ALIAS_LENGTH, requestReview, reviewBadge, setAlias, type BotEntry, type ReviewBadge } from './bots.ts';
 import { MAPS } from './maps.ts';
 import { loadSetup, randomSeed, saveSetup, type MatchSetup, type SlotSpec } from './matchSetup.ts';
 
@@ -17,6 +18,7 @@ const BADGE_TEXT: Record<ReviewBadge, string> = {
   error: 'review failed',
   stale: 'changed since review',
   unreviewed: 'not reviewed',
+  local: 'checked ✓',
 };
 
 function escapeHtml(text: string): string {
@@ -66,12 +68,21 @@ export function mountSetup(app: HTMLElement, callbacks: SetupCallbacks): () => v
         <div class="head-links">
           <button id="load-replay" title="Open a replay .json file">Load replay…</button>
           <input type="file" id="replay-file" accept=".json,application/json" hidden />
-          <a class="doc-link" href="/BOT_API.md" target="_blank" rel="noreferrer">BOT_API.md</a>
+          <a class="doc-link" href="BOT_API.md" target="_blank" rel="noreferrer">BOT_API.md</a>
         </div>
       </header>
       <div class="setup-grid">
         <section class="box">
-          <h2>Bots <small>from <code>bots/</code></small></h2>
+          <div class="starter">
+            <b>Get a bot from any AI chat</b>
+            <ol>
+              <li><button id="copy-prompt">📋 Copy AI prompt</button> and paste it into ChatGPT, DeepSeek, Doubao, Claude, Gemini…
+                <span id="prompt-status" class="muted"></span></li>
+              <li>Copy the AI's whole reply.</li>
+              <li><button id="add-bot">+ Add bot</button> and paste it in.</li>
+            </ol>
+          </div>
+          <h2>Bots</h2>
           <div id="bot-list" class="bot-list"></div>
           <h2>Other players</h2>
           <div class="other-players">
@@ -120,16 +131,17 @@ export function mountSetup(app: HTMLElement, callbacks: SetupCallbacks): () => v
     if (slot.kind === 'human') return { name: 'You', sub: 'keyboard + mouse' };
     if (slot.kind === 'dummy') return { name: `${slot.dummy} dummy`, sub: 'scripted test opponent' };
     const bot = getBot(slot.file)!;
-    return { name: displayName(bot), sub: slot.file, badge: reviewBadge(bot, reviews[slot.file]) };
+    return { name: displayName(bot), sub: bot.local ? 'your bot' : slot.file, badge: reviewBadge(bot, reviews[slot.file]) };
   }
 
   function renderBots(): void {
-    if (BOTS.length === 0) {
-      botList.innerHTML = '<div class="note">No bots found. Put <code>.js</code> files in <code>bots/</code>.</div>';
+    const bots = listBots();
+    if (bots.length === 0) {
+      botList.innerHTML = '<div class="note">No bots yet. Add one above, or put <code>.js</code> files in <code>bots/</code>.</div>';
       return;
     }
     botList.innerHTML = '';
-    for (const bot of BOTS) botList.appendChild(botRow(bot));
+    for (const bot of bots) botList.appendChild(botRow(bot));
   }
 
   function botRow(bot: BotEntry): HTMLElement {
@@ -152,20 +164,48 @@ export function mountSetup(app: HTMLElement, callbacks: SetupCallbacks): () => v
     const title = editing
       ? `<input class="rename-input" maxlength="${MAX_ALIAS_LENGTH}" placeholder="${escapeHtml(bot.name)}" />`
       : `<span class="bot-title" title="Click to rename">${escapeHtml(displayName(bot))}</span>`;
-    const fileInfo = escapeHtml([bot.file, hasAlias(bot) ? `renamed from ${bot.name}` : '', bot.author].filter(Boolean).join(' · '));
+    const origin = bot.local ? 'saved in this browser' : bot.file;
+    const fileInfo = escapeHtml([origin, hasAlias(bot) ? `renamed from ${bot.name}` : '', bot.author].filter(Boolean).join(' · '));
+    const badgeTitle = badge === 'local' ? 'Passed the static check. Bots you add are not AI-reviewed.' : '';
+    const tools = bot.local
+      ? '<button class="edit" title="Change the code or name">Edit</button><button class="delete" title="Delete from this browser">×</button>'
+      : CAN_REVIEW
+        ? `<button class="review" ${reviewing.has(bot.file) ? 'disabled' : ''} title="Static check + Jev AI review">Review</button>`
+        : '';
     row.innerHTML = `
       <div class="bot-main">
         <div class="bot-name">${title} <span class="bot-file" title="${fileInfo}">${fileInfo}</span></div>
-        <span class="badge ${badge}">${reviewing.has(bot.file) ? 'reviewing…' : BADGE_TEXT[badge]}</span>
-        <button class="review" ${reviewing.has(bot.file) ? 'disabled' : ''} title="Static check + Jev AI review">Review</button>
+        <span class="badge ${badge}" title="${badgeTitle}">${reviewing.has(bot.file) ? 'reviewing…' : BADGE_TEXT[badge]}</span>
+        ${tools}
         <button class="add" ${!bot.static.ok || setup.slots.length >= maxPlayers ? 'disabled' : ''}>+ Add</button>
       </div>
       ${reasons.length || details ? `<div class="bot-reasons">${reasons.map((r) => `<div>${escapeHtml(r)}</div>`).join('')}${details ? `<div class="muted">${escapeHtml(details)}</div>` : ''}</div>` : ''}`;
     row.querySelector<HTMLButtonElement>('.add')!.onclick = () => addSlot({ kind: 'bot', file: bot.file });
-    row.querySelector<HTMLButtonElement>('.review')!.onclick = () => void runReview(bot.file);
+    const reviewButton = row.querySelector<HTMLButtonElement>('.review');
+    if (reviewButton) reviewButton.onclick = () => void runReview(bot.file);
+    const editButton = row.querySelector<HTMLButtonElement>('.edit');
+    if (editButton) {
+      editButton.onclick = () =>
+        openBotEditor(bot, (saved) => {
+          // A bot whose new code fails the check can't keep its seats.
+          if (!saved.static.ok) setup.slots = setup.slots.filter((s) => s.kind !== 'bot' || s.file !== saved.file);
+          persist();
+          renderAll();
+        });
+    }
+    const deleteButton = row.querySelector<HTMLButtonElement>('.delete');
+    if (deleteButton) deleteButton.onclick = () => removeLocalBot(bot);
     if (editing) wireRenameInput(row.querySelector<HTMLInputElement>('.rename-input')!, bot);
     else row.querySelector<HTMLElement>('.bot-title')!.onclick = () => startRename(bot);
     return row;
+  }
+
+  function removeLocalBot(bot: BotEntry): void {
+    if (!confirm(`Delete "${displayName(bot)}" from this browser? This can't be undone.`)) return;
+    deleteLocalBot(bot.file);
+    setup.slots = setup.slots.filter((s) => s.kind !== 'bot' || s.file !== bot.file);
+    persist();
+    renderAll();
   }
 
   function startRename(bot: BotEntry): void {
@@ -326,6 +366,19 @@ export function mountSetup(app: HTMLElement, callbacks: SetupCallbacks): () => v
     persist();
     renderSlots();
   };
+  // Load the prompt up front: some browsers only allow copying right after the click.
+  const prompt = botPrompt();
+  $('copy-prompt').onclick = async () => {
+    const text = await prompt;
+    if (await copyText(text)) $('prompt-status').textContent = 'Copied ✓';
+    else openCopyFallback('AI prompt', text);
+  };
+  $('add-bot').onclick = () =>
+    openBotEditor(null, (bot) => {
+      if (bot.static.ok && setup.slots.length < maxPlayers) setup.slots.push({ kind: 'bot', file: bot.file });
+      persist();
+      renderAll();
+    });
   $('add-human').onclick = () => addSlot({ kind: 'human' });
   $('add-dummy').onclick = () => addSlot({ kind: 'dummy', dummy: dummyKind.value as DummyKind });
   $('start').onclick = () => {

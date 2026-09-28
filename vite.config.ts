@@ -1,3 +1,4 @@
+import { readFileSync } from 'node:fs';
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import { defineConfig, type Plugin } from 'vitest/config';
 
@@ -62,8 +63,21 @@ function botReviewApi(): Plugin {
   };
 }
 
+/** Ship BOT_API.md with the static build, so the setup page's link works when hosted. */
+function botApiDoc(): Plugin {
+  return {
+    name: 'harena-bot-api-doc',
+    apply: 'build',
+    generateBundle() {
+      this.emitFile({ type: 'asset', fileName: 'BOT_API.md', source: readFileSync('BOT_API.md', 'utf8') });
+    },
+  };
+}
+
 export default defineConfig({
-  plugins: [botReviewApi()],
+  // Relative asset paths: the build works at a domain root or in a subdirectory.
+  base: './',
+  plugins: [botReviewApi(), botApiDoc()],
   server: {
     open: false,
     // Review files are read through the API; don't reload the page when one is written.

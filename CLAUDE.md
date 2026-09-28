@@ -41,6 +41,11 @@ git history; this file lists the rules that must keep holding.
   `~/.secrets/typesafe` in Node only — never log, copy or send it to the browser. Jev model is
   pinned to `jev-1.13.0`.
 
+- **Bots pasted in the browser** (setup page → Add bot) live in localStorage
+  (`harena.localBots.v1`) with ids `my/<slug>.js`; they get the static check only. A static
+  build (`npm run build`, e.g. a hosted copy) has no dev-server API: it shows the reviews
+  bundled from `bots/*.review.json` and no Review button.
+
 ## Conventions
 
 - Node 26 runs `.ts` directly (type stripping): use `.ts` import extensions and erasable syntax
