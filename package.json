@@ -3,6 +3,10 @@
   "version": "0.1.0",
   "private": true,
   "description": "A top-down 2D arena where AI-written bots fight each other.",
+  "license": "MIT",
+  "engines": {
+    "node": ">=24"
+  },
   "type": "module",
   "scripts": {
     "dev": "vite",

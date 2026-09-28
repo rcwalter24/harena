@@ -1,36 +1,91 @@
 # Harena
 
-A top-down 2D arena where bots written by different AIs fight each other.
-The engine is pure TypeScript (no DOM) with a fixed 30 tick/s deterministic
-simulation; the browser renders it on a canvas with interpolation.
+**English** · [简体中文](README.zh-CN.md)
 
-## Commands
+A top-down 2D arena where **bots written by different AIs fight each other**. Hand an AI the
+rulebook ([`BOT_API.md`](BOT_API.md)), drop the JavaScript file it writes into `bots/`, and
+watch it battle bots from other AIs — or jump in yourself with the keyboard.
 
-| Command | What it does |
+![A four-bot match on the Blockyard map](docs/images/match.png)
+
+## Features
+
+- **One file per bot.** A bot is a plain ES module with `init()` and `decide()`; `BOT_API.md`
+  explains every rule, number and type, so any capable AI can write one from it alone.
+- **Knives, guns, grenade launchers and timed mines**, plus health, shields, ammo and extra
+  lives spawning around the map.
+- **Bushes** hide players (for up to 5 s at a time), a **shrinking safe zone** forces a
+  showdown, and **movement inertia** makes dodging and leading shots matter.
+- **1v1 or free-for-all with 2–8 players**, on four maps.
+- **Sandboxed bots.** Each bot runs in its own worker with a time budget; bots that throw,
+  hang or return garbage are logged, restarted or disabled — the match never crashes.
+- **Deterministic engine.** Every match can be saved as a small replay file that re-simulates
+  exactly, and replays can be **exported as 1080p MP4 videos** right in the browser.
+- **Batch mode** runs hundreds of headless matches in Node and prints win rates and stats.
+
+![Results screen with per-player stats](docs/images/results.png)
+
+## Quick start
+
+You need [Node.js](https://nodejs.org/) 24 or newer.
+
+```bash
+git clone https://github.com/rcwalter24/harena.git
+cd harena
+npm install
+npm run dev
+```
+
+Open the printed URL (usually <http://localhost:5173>), pick a map and some bots on the setup
+page, and press **Start match**.
+
+## Write a bot with an AI
+
+1. Give an AI chat assistant [`BOT_API.md`](BOT_API.md) and ask: *"Write a Harena bot that
+   follows this spec. Reply with a single JavaScript file."*
+2. Save the reply as `bots/<name>.js`. It shows up on the setup page automatically.
+3. Start a match against the bundled bots. If the bot throws errors or runs too slowly, the
+   **Bot log** on the match page says so — paste it back to the AI and ask for a fix.
+4. Optionally click the bot's name on the setup page to give it a display name (stored in your
+   browser only).
+
+Bundled bots:
+
+| File | About |
 |---|---|
-| `npm install` | Install dev dependencies (Vite, Vitest, TypeScript) |
-| `npm run dev` | Start the dev server (open the printed URL) |
-| `npm test` | Run the engine unit tests |
-| `npm run typecheck` | Type-check the app, and the engine without DOM typings |
-| `npm run build` | Type-check and build a static bundle into `dist/` |
-| `npm run docs` | Regenerate `BOT_API.md` from the template, config, types and example bot |
-| `npm run docs:check` | Fail if `BOT_API.md` is out of date (also covered by `npm test`) |
-| `npm run batch -- --bots a,b,…` | Headless batch matches in Node with win rates and stats (`-- --help` for options) |
-| `npm run review` | Static check + Jev AI review of new/changed bots (`-- --all`, `-- file.js`, `-- --static-only`) |
+| `random.js`, `chaser.js`, `gunner.js` | Hand-written examples; `gunner.js` is also the example in `BOT_API.md` |
+| `astra.js`, `deepseek.js`, `doubao.js` | Written by different AI assistants from `BOT_API.md` |
 
-## Adding a bot
+Every file in `bots/` must pass a static check before it can play (no imports, no network, no
+`eval`, no tampering with the sandbox). Bots run isolated in workers, but that is not a hard
+security boundary — only run bots you have looked at.
 
-1. Give an AI `BOT_API.md` and ask it for a bot.
-2. Save the file as `bots/<name>.js`; it appears on the setup page automatically.
-3. Review it with the **Review** button or `npm run review`. Static-check failures block the bot;
-   Jev (TypeSafe AI) findings are warnings, and the choice is yours. Reviews are saved as
-   `bots/<name>.review.json` and flagged as stale when the bot changes.
-4. Optionally click its name on the setup page to rename it (e.g. after the AI that wrote it).
-   The name is stored in this browser only; the bot file and its review are left untouched.
-   Batch matches use file names.
+## Play yourself
 
-The Jev API key is read at runtime from `TYPESAFE_API_KEY` or `~/.secrets/typesafe`
-(override the path with `TYPESAFE_KEY_FILE`); it never reaches the browser.
+Add **You (keyboard)** as a player on the setup page.
+
+| Key | Action |
+|---|---|
+| `W` `A` `S` `D` / arrow keys | Move |
+| Mouse | Aim |
+| Left click | Attack |
+| `1` / `2` / `3` | Knife / gun / grenade launcher |
+| `Q` | Next weapon |
+| `E` / right click | Plant a mine |
+| `P` · `N` · `[` `]` · `R` | Pause · step · speed · restart |
+| `F3` | Debug overlay (hitboxes, ranges) |
+
+## Replays and videos
+
+Every match is recorded: the seed, the map, the rules and every action the engine applied.
+The results screen offers **Watch replay** and **Download replay** (a `.json` file), and
+**Load replay…** on the setup page opens one again. Replays re-simulate the match exactly and
+verify themselves against recorded checksums.
+
+**Export video** (replay viewer and results screen) renders a replay to a 1920×1080 MP4
+(H.264) with a title card, player cards, kill feed and final results — faster than real time,
+entirely in the browser. Quiet stretches can optionally play at 4×. It needs WebCodecs (a
+recent Chrome, Edge or Safari); where H.264 encoding is missing it falls back to WebM (VP9).
 
 ## Batch matches
 
@@ -40,36 +95,62 @@ npm run batch -- --bots gunner,gunner,chaser,chaser --games 50 --replays out/rep
 ```
 
 Each game gets its own seed (`<seed>-<index>`) and shuffled seats; bots run in
-`worker_threads` with the same sandbox rules as in the browser. Without timeouts the
-same arguments reproduce the same results. Bots that fail the static check are refused.
+`worker_threads` with the same sandbox rules as in the browser. Without timeouts, the same
+arguments reproduce the same results. `npm run batch -- --help` lists all options.
 
-## Replays
+## Optional: AI code review of bots
 
-Every match is recorded: the seed, the map and rule config, and every action the engine
-applied. After a match, the results screen offers **Watch replay** and **Download replay**
-(a `.json` file); **Load replay…** on the setup page opens one again. Replays re-simulate the
-match exactly (bots are not needed) and verify themselves against recorded checksums; the
-viewer warns if the engine or rules changed since recording.
+Besides the static check, bots can be reviewed by Jev, an AI code reviewer from
+[TypeSafe](https://www.npmjs.com/package/@typesafe-ai/sdk), with the **Review** button on the
+setup page or `npm run review`. Its findings are advisory; you decide whether to play a bot.
+This needs your own TypeSafe API key, read at runtime from `TYPESAFE_API_KEY` or the file
+`~/.secrets/typesafe` (override the path with `TYPESAFE_KEY_FILE`). The key stays in Node and
+never reaches the browser. Reviews are saved as `bots/<name>.review.json` and flagged as stale
+when the bot changes. Everything else works without a key.
 
-**Export video** (replay viewer and results screen) renders a replay to a 1920×1080 MP4
-(H.264) in the browser, faster than real time: a title card, the match with player cards and
-kill feed, and the final results. Quiet stretches can play at 4×. It needs WebCodecs (recent
-Chrome, Edge or Safari); where H.264 encoding is missing it falls back to WebM (VP9). Batch
-replays (`--replays`) can be opened and exported the same way.
+## Commands
 
-## Layout
+| Command | What it does |
+|---|---|
+| `npm run dev` | Start the dev server |
+| `npm test` | Run the tests |
+| `npm run typecheck` | Type-check the app, and the engine without DOM typings |
+| `npm run build` | Type-check and build a static site into `dist/` |
+| `npm run docs` | Regenerate `BOT_API.md` from the template, config, types and example bot |
+| `npm run batch -- --bots a,b,…` | Headless batch matches with win rates and stats |
+| `npm run review` | Static check + Jev review of new or changed bots (`-- --all`, `-- file.js`, `-- --static-only`) |
 
-- `src/engine/` – simulation (config, geometry, systems, deterministic math/RNG)
-- `src/video/` – replay → video export (frame layout, fast-forward timeline, encoding via `mediabunny`)
-- `src/match/` – controllers, the match runner and the bot supervisor (budgets, failures, restarts)
-- `src/sandbox/` – bot worker harness for the browser (Web Worker) and Node (worker_threads)
-- `src/review/` – static check and Jev review
-- `bots/` – bot files (+ their saved reviews)
-- `src/render/` – canvas renderer
-- `src/ui/` – pages, HUD and keyboard/mouse input
-- `maps/` – map data (JSON)
-- `cli/` – Node command-line tools (batch matches)
-- `src/batch/` – headless batch runner
-- `tests/` – Vitest tests
+## Project layout
 
-All rule numbers live in `src/engine/config.ts`.
+| Path | Contents |
+|---|---|
+| `src/engine/` | Deterministic simulation: config, geometry, game systems, seeded RNG |
+| `src/match/` | Controllers, the match runner and the bot supervisor (budgets, failures, restarts) |
+| `src/sandbox/` | Bot worker harness for the browser (Web Worker) and Node (worker_threads) |
+| `src/render/` | Canvas renderer |
+| `src/ui/` | Pages, HUD and keyboard/mouse input |
+| `src/video/` | Replay → video export |
+| `src/review/` | Static check and Jev review |
+| `src/batch/`, `cli/` | Headless batch runner and its command line |
+| `bots/` | Bot files and their saved reviews |
+| `maps/` | Maps (JSON) |
+| `docs/` | `BOT_API.md` template and README images |
+| `tests/` | Vitest tests |
+
+## Contributing
+
+Issues and pull requests are welcome. A few rules keep replays and bots working:
+
+- The engine (`src/engine/`) must stay deterministic: no DOM, no `Math.sin/cos/atan2/hypot`,
+  randomness only from the seeded RNG.
+- Every rule number lives in `src/engine/config.ts` with a doc entry.
+- `BOT_API.md` is generated — edit `docs/BOT_API.template.md` and run `npm run docs`.
+- The bot API only grows: add optional fields, never rename or remove.
+- Run `npm run typecheck && npm test` before sending a change.
+
+[`CLAUDE.md`](CLAUDE.md) has the full list, written for AI coding assistants but useful for
+humans too.
+
+## License
+
+[MIT](LICENSE)

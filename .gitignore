@@ -1,5 +1,24 @@
+# Dependencies and build output
 node_modules/
 dist/
 out/
+coverage/
+.vite/
+
+# Secrets: never commit API keys (the TypeSafe key is read from the environment or ~/.secrets)
+.env
+.env.*
+*.key
+*.pem
+
+# Local artefacts: downloaded replays and exported videos
+*.mp4
+*.webm
+
+# OS / editor noise
 *.log
 .DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.swp
