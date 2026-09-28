@@ -411,7 +411,7 @@ Your bot receives the map in `info.map` and should work on any of them.
 - **Optional: try it on the real engine.** If you can run JavaScript (Node.js 18 or newer), you can
   download the test kit from <https://harena.rcwalter.net/harena-sim.mjs> (or build it from the
   source, <https://github.com/rcwalter24/harena>, with `npm run build`): the actual engine, rules
-  and sandbox in one file, with the built-in bots as opponents. For example
+  and sandbox in one file, with the three example bots (`random`, `chaser`, `gunner`) as opponents. For example
   `node harena-sim.mjs mybot.js --vs gunner,chaser --games 20` prints win rates, accuracy and any
   errors or timeouts; `--trace trace.json` records one game tick by tick; `--help` lists the rest.
   It's a convenience, not a requirement — a bot written from this document alone is fine.

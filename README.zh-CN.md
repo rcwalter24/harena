@@ -51,7 +51,7 @@ npm run dev
 
 可选：如果 AI 能运行代码（例如可以上传文件的 Claude 或 ChatGPT），可以把设置页上的**测试包**也发给它。
 测试包 `harena-sim.mjs` 是单文件的真实引擎、规则和沙箱，需要 Node.js 18 以上，AI 可以先让自己的机器人和
-自带的机器人打几局再回复你：
+三个示例机器人打几局再回复你（测试包特意不带其他机器人，免得 AI 读到对手的代码）：
 
 ```bash
 node harena-sim.mjs mybot.js --vs gunner,chaser --games 20   # 胜率、命中率、报错
@@ -67,7 +67,7 @@ node harena-sim.mjs mybot.js --games 1 --trace trace.json    # 逐帧记录一�
 | 文件 | 说明 |
 |---|---|
 | `random.js`、`chaser.js`、`gunner.js` | 手写的示例；`gunner.js` 也是 `BOT_API.md` 里的示例代码 |
-| `astra.js`、`deepseek.js`、`doubao.js` | 由不同的 AI 助手根据 `BOT_API.md` 编写 |
+| `astra.js`、`deepseek.js`、`doubao.js`、`opus5.5.js` | 由不同的 AI 助手根据 `BOT_API.md` 编写 |
 
 `bots/` 里的每个文件都要先通过静态检查才能上场（不能 import、不能联网、不能 `eval`、不能篡改
 沙箱）。机器人在 worker 里隔离运行，但这不是严格的安全边界——只运行你看过的机器人。

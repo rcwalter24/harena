@@ -20,8 +20,10 @@ declare const __HARENA_BUILD__: string;
 
 const WORKER_ROLE = 'harena-bot-worker';
 
+// Only the three example bots ship in the kit. The kit goes to AIs that are writing bots, and
+// the other bots in bots/ are their competition: their code must not be handed over with it.
 const BUILTIN_BOTS: Record<string, string> = Object.fromEntries(
-  Object.entries(import.meta.glob('/bots/*.js', { query: '?raw', import: 'default', eager: true }) as Record<string, string>)
+  Object.entries(import.meta.glob(['/bots/random.js', '/bots/chaser.js', '/bots/gunner.js'], { query: '?raw', import: 'default', eager: true }) as Record<string, string>)
     .map(([path, source]) => [basename(path, '.js'), source]),
 );
 

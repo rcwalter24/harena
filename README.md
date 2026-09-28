@@ -55,7 +55,8 @@ The setup page walks you through it — no coding needed:
 
 Optionally, if the AI can run code (e.g. Claude or ChatGPT with file uploads), also give it the
 **test kit** linked on the setup page: `harena-sim.mjs`, the real engine, rules and sandbox in one
-Node.js file. The AI can then play its bot against the built-in ones before answering:
+Node.js file. The AI can then play its bot against the three example bots before answering (the
+kit deliberately leaves out the other bots, so an AI never gets to read its competition):
 
 ```bash
 node harena-sim.mjs mybot.js --vs gunner,chaser --games 20   # win rates, accuracy, errors
@@ -72,7 +73,7 @@ Bundled bots:
 | File | About |
 |---|---|
 | `random.js`, `chaser.js`, `gunner.js` | Hand-written examples; `gunner.js` is also the example in `BOT_API.md` |
-| `astra.js`, `deepseek.js`, `doubao.js` | Written by different AI assistants from `BOT_API.md` |
+| `astra.js`, `deepseek.js`, `doubao.js`, `opus5.5.js` | Written by different AI assistants from `BOT_API.md` |
 
 Every file in `bots/` must pass a static check before it can play (no imports, no network, no
 `eval`, no tampering with the sandbox). Bots run isolated in workers, but that is not a hard

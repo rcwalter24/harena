@@ -1,5 +1,5 @@
 import { execFileSync } from 'node:child_process';
-import { rmSync } from 'node:fs';
+import { readdirSync, readFileSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { ROOT, runBatch } from '../src/batch/batch.ts';
@@ -25,6 +25,15 @@ describe('test kit (dist/harena-sim.mjs)', () => {
     expect(out.bots.map(pick).sort()).toEqual(batch.bots.map(pick).sort());
     expect(out.logs.doubao.problems).toEqual([]);
   }, 60_000);
+
+  it('ships only the three example bots, not the competition', () => {
+    expect(kit('--list')).toMatch(/^Built-in bots: chaser, gunner, random$/m);
+    const bundle = readFileSync(KIT, 'utf8');
+    for (const other of readdirSync(join(ROOT, 'bots')).filter((f) => f.endsWith('.js') && !['random.js', 'chaser.js', 'gunner.js'].includes(f))) {
+      const meta = /export const meta = \{[^}]*\}/.exec(readFileSync(join(ROOT, 'bots', other), 'utf8'))?.[0];
+      if (meta) expect(bundle.includes(meta), `${other} must not be in the kit`).toBe(false);
+    }
+  });
 
   it('refuses a bot the static check would block, with the reasons', () => {
     let message = '';
