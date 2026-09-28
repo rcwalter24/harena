@@ -1,4 +1,5 @@
 import { knifeCanHit } from '../engine/systems/combat.ts';
+import { isVisibleTo } from '../engine/systems/visibility.ts';
 import { IDLE_ACTION, type ActionInput, type GameState, type PlayerState } from '../engine/types.ts';
 import type { Controller } from './controller.ts';
 
@@ -10,11 +11,12 @@ export type DummyKind = 'idle' | 'strafe' | 'brawler' | 'shooter';
 
 export const DUMMY_KINDS: readonly DummyKind[] = ['idle', 'strafe', 'brawler', 'shooter'];
 
+/** Nearest enemy this dummy can see (dummies obey bush visibility like bots do). */
 function nearestEnemy(state: Readonly<GameState>, self: PlayerState): PlayerState | null {
   let best: PlayerState | null = null;
   let bestD = Infinity;
   for (const p of state.players) {
-    if (p === self || !p.alive) continue;
+    if (p === self || !p.alive || !isVisibleTo(state as GameState, self, p)) continue;
     const d = Math.hypot(p.x - self.x, p.y - self.y);
     if (d < bestD) {
       best = p;

@@ -167,7 +167,8 @@ export function mountMatch(app: HTMLElement, setup: MatchSetup, onExit: () => vo
     loop = new GameLoop(
       runner,
       (s, prev, alpha) => {
-        renderer.render(s, prev, alpha, { debug: debugBox.checked, focusId: humanId >= 0 ? humanId : undefined });
+        const human = humanId >= 0 ? humanId : undefined;
+        renderer.render(s, prev, alpha, { debug: debugBox.checked, focusId: human, viewerId: human });
         const now = performance.now();
         if (now - lastPanelUpdate > 100) {
           lastPanelUpdate = now;

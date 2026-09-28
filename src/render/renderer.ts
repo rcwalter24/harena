@@ -1,7 +1,6 @@
 import type { ItemType } from '../engine/config.ts';
-import { bushAt } from '../engine/systems/visibility.ts';
-import type { GameEvent, GameState, MapData, PlayerState } from '../engine/types.ts';
-import { Rng } from '../engine/rng.ts';
+import { bushAt, isVisibleTo } from '../engine/systems/visibility.ts';
+import type { GameEvent, GameState, PlayerState } from '../engine/types.ts';
 
 export const PLAYER_COLORS = ['#4fc3f7', '#ff7043', '#9ccc65', '#ba68c8', '#ffd54f', '#4db6ac', '#f06292', '#a1887f'];
 
@@ -52,6 +51,12 @@ export interface RenderOptions {
   debug: boolean;
   /** Player whose card/marker gets highlighted (e.g. the human). */
   focusId?: number;
+  /**
+   * Draw the arena as this player sees it: enemies hidden in bushes are not
+   * drawn (only a fading marker where they were last seen). Used when a human
+   * plays, so they get exactly the information bots get. Omit for spectators.
+   */
+  viewerId?: number;
 }
 
 function lerp(a: number, b: number, t: number): number {
@@ -72,7 +77,6 @@ export class Renderer {
   private offsetX = 0;
   private offsetY = 0;
   private effects: Effect[] = [];
-  private foliage: { map: MapData; blobs: { x: number; y: number; r: number; shade: number }[] } | null = null;
 
   constructor(canvas: HTMLCanvasElement) {
     this.canvas = canvas;
@@ -159,18 +163,48 @@ export class Renderer {
       if (!q || !q.alive || !p.alive || Math.hypot(q.x - p.x, q.y - p.y) > 60) return { x: p.x, y: p.y, facing: p.facing };
       return { x: lerp(q.x, p.x, alpha), y: lerp(q.y, p.y, alpha), facing: lerpAngle(q.facing, p.facing, alpha) };
     });
-    if (opts.debug) this.drawDebugUnder(state, positions);
+    const viewer = opts.viewerId !== undefined ? state.players[opts.viewerId] : null;
+    const shown = new Set(state.players.filter((p) => !viewer || isVisibleTo(state, viewer, p)).map((p) => p.id));
+    if (viewer) this.drawLastSeen(state, viewer.id, shown);
+    if (opts.debug) this.drawDebugUnder(state, positions, shown);
     for (const p of state.players) {
-      if (!p.alive) continue;
-      // Players hiding in a bush are drawn faded (spectators always see them).
-      const hidden = bushAt(state, p.x, p.y) >= 0 && p.noiseTimer === 0;
-      ctx.globalAlpha = hidden ? 0.45 : 1;
+      if (!p.alive || !shown.has(p.id)) continue;
+      // Players inside a bush are drawn faded, as a hint that they are hidden from others.
+      const inBush = bushAt(state, p.x, p.y) >= 0 && p.noiseTimer === 0;
+      ctx.globalAlpha = inBush ? 0.45 : 1;
       this.drawPlayer(state, p, positions[p.id], p.id === opts.focusId);
       ctx.globalAlpha = 1;
     }
     this.drawEffects();
-    if (opts.debug) this.drawDebugOver(state);
+    if (opts.debug) this.drawDebugOver(state, shown);
     ctx.restore();
+  }
+
+  /** Fading "?" markers where hidden enemies were last seen (what a bot would know). */
+  private drawLastSeen(state: GameState, viewerId: number, shown: Set<number>): void {
+    const { ctx } = this;
+    const r = state.config.player.radius;
+    for (const p of state.players) {
+      if (shown.has(p.id) || !p.alive) continue;
+      const seen = state.lastSeen[viewerId][p.id];
+      const age = (state.tick - seen.tick) / state.config.tickRate;
+      if (age > 3) continue;
+      const fade = 1 - age / 3;
+      ctx.globalAlpha = 0.6 * fade;
+      ctx.setLineDash([4, 4]);
+      ctx.strokeStyle = playerColor(p.id);
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.arc(seen.x, seen.y, r, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.setLineDash([]);
+      ctx.fillStyle = playerColor(p.id);
+      ctx.font = 'bold 14px system-ui, sans-serif';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText('?', seen.x, seen.y + 1);
+      ctx.globalAlpha = 1;
+    }
   }
 
   private drawArena(state: GameState): void {
@@ -201,34 +235,30 @@ export class Renderer {
     }
   }
 
-  /** Leafy blobs, generated once per map from a fixed seed so they don't flicker. */
+  /** Flat bushes in the same style as walls: rounded, hatched, with a crisp edge. */
   private drawBushes(state: GameState): void {
     const { ctx } = this;
-    const bushes = state.map.bushes ?? [];
-    if (bushes.length === 0) return;
-    if (this.foliage?.map !== state.map) {
-      const rng = new Rng(`foliage:${state.map.id}`);
-      const blobs: { x: number; y: number; r: number; shade: number }[] = [];
-      for (const b of bushes) {
-        const count = Math.max(6, Math.round((b.w * b.h) / 700));
-        for (let i = 0; i < count; i++) {
-          const r = rng.range(9, 17);
-          blobs.push({ x: rng.range(b.x + r * 0.6, b.x + b.w - r * 0.6), y: rng.range(b.y + r * 0.6, b.y + b.h - r * 0.6), r, shade: rng.next() });
-        }
+    for (const b of state.map.bushes ?? []) {
+      ctx.save();
+      ctx.beginPath();
+      ctx.roundRect(b.x, b.y, b.w, b.h, 8);
+      ctx.fillStyle = 'rgba(58, 122, 72, 0.42)';
+      ctx.fill();
+      ctx.clip();
+      ctx.strokeStyle = 'rgba(120, 190, 130, 0.16)';
+      ctx.lineWidth = 3;
+      ctx.beginPath();
+      for (let d = -b.h; d < b.w; d += 14) {
+        ctx.moveTo(b.x + d, b.y + b.h);
+        ctx.lineTo(b.x + d + b.h, b.y);
       }
-      this.foliage = { map: state.map, blobs };
-    }
-    for (const b of bushes) {
-      ctx.fillStyle = 'rgba(46, 94, 52, 0.55)';
+      ctx.stroke();
+      ctx.restore();
+      ctx.strokeStyle = 'rgba(110, 180, 120, 0.55)';
+      ctx.lineWidth = 2;
       ctx.beginPath();
-      ctx.roundRect(b.x, b.y, b.w, b.h, 10);
-      ctx.fill();
-    }
-    for (const blob of this.foliage.blobs) {
-      ctx.fillStyle = `rgba(${60 + blob.shade * 30}, ${120 + blob.shade * 40}, ${62 + blob.shade * 20}, 0.55)`;
-      ctx.beginPath();
-      ctx.arc(blob.x, blob.y, blob.r, 0, Math.PI * 2);
-      ctx.fill();
+      ctx.roundRect(b.x, b.y, b.w, b.h, 8);
+      ctx.stroke();
     }
   }
 
@@ -418,6 +448,18 @@ export class Renderer {
     }
     ctx.restore();
 
+    // Shield: a translucent blue halo that grows stronger with more shield.
+    if (p.shield > 0) {
+      const f = Math.min(1, p.shield / state.config.player.maxShield);
+      ctx.fillStyle = `rgba(74,144,226,${0.12 + 0.2 * f})`;
+      ctx.beginPath();
+      ctx.arc(pos.x, pos.y, r + 3 + 3 * f, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.strokeStyle = `rgba(120,180,255,${0.45 + 0.4 * f})`;
+      ctx.lineWidth = 1.5 + f;
+      ctx.stroke();
+    }
+
     // Body.
     ctx.fillStyle = color;
     ctx.beginPath();
@@ -519,12 +561,12 @@ export class Renderer {
     ctx.globalAlpha = 1;
   }
 
-  private drawDebugUnder(state: GameState, positions: { x: number; y: number; facing: number }[]): void {
+  private drawDebugUnder(state: GameState, positions: { x: number; y: number; facing: number }[], shown: Set<number>): void {
     const { ctx } = this;
     const { player, knife } = state.config;
     const half = (knife.arcDegrees / 2) * (Math.PI / 180);
     for (const p of state.players) {
-      if (!p.alive || p.weapon !== 'knife') continue;
+      if (!p.alive || p.weapon !== 'knife' || !shown.has(p.id)) continue;
       const pos = positions[p.id];
       ctx.fillStyle = 'rgba(255,255,255,0.06)';
       ctx.strokeStyle = 'rgba(255,255,255,0.25)';
@@ -539,7 +581,7 @@ export class Renderer {
     }
   }
 
-  private drawDebugOver(state: GameState): void {
+  private drawDebugOver(state: GameState, shown: Set<number>): void {
     const { ctx } = this;
     const { player, items } = state.config;
     ctx.lineWidth = 1;
@@ -548,7 +590,7 @@ export class Renderer {
       ctx.strokeRect(s.x - 4, s.y - 4, 8, 8);
     }
     for (const p of state.players) {
-      if (!p.alive) continue;
+      if (!p.alive || !shown.has(p.id)) continue;
       ctx.strokeStyle = 'rgba(255,80,80,0.9)';
       ctx.beginPath();
       ctx.arc(p.x, p.y, player.radius, 0, Math.PI * 2);
