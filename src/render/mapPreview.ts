@@ -4,10 +4,9 @@ import { PLAYER_COLORS } from './renderer.ts';
 /**
  * Small static thumbnail of a map: walls, bushes and gun pads, plus where each
  * player starts (`starts[i]` = player i's position, in player colours). Spawn
- * points nobody starts on are drawn as small grey dots. `zoneRadius` draws the
- * final safe zone as a dashed circle around the map centre.
+ * points nobody starts on are drawn as small grey dots.
  */
-export function drawMapPreview(canvas: HTMLCanvasElement, map: MapData, starts: { x: number; y: number }[] = [], zoneRadius?: number): void {
+export function drawMapPreview(canvas: HTMLCanvasElement, map: MapData, starts: { x: number; y: number }[] = []): void {
   const dpr = window.devicePixelRatio || 1;
   const cssW = canvas.clientWidth || 300;
   const cssH = Math.round((cssW * map.height) / map.width);
@@ -30,15 +29,6 @@ export function drawMapPreview(canvas: HTMLCanvasElement, map: MapData, starts: 
     ctx.beginPath();
     ctx.arc(g.x, g.y, 22, 0, Math.PI * 2);
     ctx.stroke();
-  }
-  if (zoneRadius !== undefined) {
-    ctx.strokeStyle = 'rgba(226, 103, 74, 0.8)';
-    ctx.lineWidth = 8;
-    ctx.setLineDash([30, 24]);
-    ctx.beginPath();
-    ctx.arc(map.width / 2, map.height / 2, zoneRadius, 0, Math.PI * 2);
-    ctx.stroke();
-    ctx.setLineDash([]);
   }
   const taken = (sp: { x: number; y: number }) => starts.some((p) => p.x === sp.x && p.y === sp.y);
   ctx.fillStyle = '#5c6578';
