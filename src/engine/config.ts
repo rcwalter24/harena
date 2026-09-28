@@ -142,14 +142,14 @@ export const DEFAULT_CONFIG: GameConfig = {
     maxAmmo: 40,
   },
   launcher: {
-    grenadeSpeed: 360,
+    grenadeSpeed: 480,
     grenadeRadius: 6,
     cooldown: 1.2,
     range: 700,
     pickupAmmo: 3,
     maxAmmo: 6,
     blastRadius: 80,
-    centerDamage: 70,
+    centerDamage: 200,
     edgeDamage: 20,
   },
   mines: {
@@ -158,7 +158,7 @@ export const DEFAULT_CONFIG: GameConfig = {
     pickupAmount: 2,
     maxCarry: 3,
     blastRadius: 100,
-    centerDamage: 90,
+    centerDamage: 200,
     edgeDamage: 25,
   },
   explosions: {

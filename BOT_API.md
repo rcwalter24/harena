@@ -150,11 +150,11 @@ Consequences:
 
 ### 5.5 Grenade launcher
 - Picked up as a `launcher` item, which gives 3 grenades (max 6).
-- It fires a grenade from your centre along your facing: speed 360 u/s,
+- It fires a grenade from your centre along your facing: speed 480 u/s,
   radius 6, cooldown 1.2 s.
 - The grenade explodes when it touches a wall or any player other than its shooter, or after
   flying 700 u.
-- Explosion radius is 80 u. Damage is 70 at the centre and falls linearly to
+- Explosion radius is 80 u. Damage is 200 at the centre and falls linearly to
   20 at the edge. Distance is measured from the blast centre to the nearest point of the target
   (centre distance − 16).
 
@@ -163,7 +163,7 @@ Consequences:
 - `plantMine: true` plants one at your position, whatever weapon you hold, even while switching.
   Cooldown is 0.5 s.
 - A mine explodes **2.5 s after being planted**, no matter who is nearby. Everyone can see mines
-  and their remaining `fuse`. Radius is 100 u, damage 90 at the centre falling to 25 at the edge.
+  and their remaining `fuse`. Radius is 100 u, damage 200 at the centre falling to 25 at the edge.
 - An explosion **immediately detonates every other mine in its radius** (chain reaction).
 - Mines don't block movement. They outlive their owner, and kills still go to the owner.
 
@@ -617,14 +617,14 @@ Every value below is also available at runtime as `info.rules.<path>`, for examp
 
 | `info.rules.…` | Value | Unit | Meaning |
 |---|---|---|---|
-| `launcher.grenadeSpeed` | 360 | u/s | Grenade speed (constant, straight line). |
+| `launcher.grenadeSpeed` | 480 | u/s | Grenade speed (constant, straight line). |
 | `launcher.grenadeRadius` | 6 | u | Grenade collision radius. |
 | `launcher.cooldown` | 1.2 | s | Minimum time between grenade shots. |
 | `launcher.range` | 700 | u | A grenade explodes by itself after travelling this far. |
 | `launcher.pickupAmmo` | 3 | grenades | Grenades gained from a launcher item. |
 | `launcher.maxAmmo` | 6 | grenades | Grenade cap. |
 | `launcher.blastRadius` | 80 | u | Grenade explosion radius (measured to the edge of a target). |
-| `launcher.centerDamage` | 70 | hp | Grenade damage at the centre of the explosion. |
+| `launcher.centerDamage` | 200 | hp | Grenade damage at the centre of the explosion. |
 | `launcher.edgeDamage` | 20 | hp | Grenade damage at the edge of the blast radius (linear falloff in between). |
 
 **mines**
@@ -636,7 +636,7 @@ Every value below is also available at runtime as `info.rules.<path>`, for examp
 | `mines.pickupAmount` | 2 | mines | Mines gained from a mines item. |
 | `mines.maxCarry` | 3 | mines | Maximum mines carried. |
 | `mines.blastRadius` | 100 | u | Mine explosion radius (measured to the edge of a target). |
-| `mines.centerDamage` | 90 | hp | Mine damage at the centre of the explosion. |
+| `mines.centerDamage` | 200 | hp | Mine damage at the centre of the explosion. |
 | `mines.edgeDamage` | 25 | hp | Mine damage at the edge of the blast radius (linear falloff in between). |
 
 **explosions**

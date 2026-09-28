@@ -1,3 +1,4 @@
+import { DEFAULT_CONFIG } from '../../src/engine/config.ts';
 import { describe, expect, it } from 'vitest';
 import { step } from '../../src/engine/game.ts';
 import { blastDamage } from '../../src/engine/systems/explosives.ts';
@@ -17,7 +18,8 @@ function runUntilQuiet(s: GameState, max = 200): void {
 
 describe('grenade launcher', () => {
   it('fires a grenade that explodes on hitting a player, with full centre damage minus falloff', () => {
-    const s = testGame();
+    // Damage pinned below lethal so the falloff is measurable, whatever the tuned defaults are.
+    const s = testGame({ config: { launcher: { centerDamage: 70, edgeDamage: 20 } } });
     place(s, 0, 200, 500, 0);
     place(s, 1, 500, 500);
     armLauncher(s, 0);
@@ -111,7 +113,7 @@ describe('explosions', () => {
 
 describe('mines', () => {
   it('explode exactly after the fuse, and are planted whatever weapon is held', () => {
-    const s = testGame();
+    const s = testGame({ config: { mines: { centerDamage: 90, edgeDamage: 25 } } });
     place(s, 0, 500, 500);
     place(s, 1, 560, 500);
     Object.assign(s.players[0], { mines: 2, hasGun: true, weapon: 'gun', switchTimer: 5 });
@@ -247,5 +249,13 @@ describe('snapshot of explosives', () => {
     s.mines.push({ id: 999, ownerId: 1, x: 900, y: 100, fuseTimer: 0 });
     step(s, []);
     expect(buildBotState(s).explosions).toEqual([{ ownerId: 1, source: 'mine', x: 900, y: 100, radius: 100 }]);
+  });
+});
+
+describe('default tuning', () => {
+  it('a grenade or mine blast at the centre kills a player with full health and shield', () => {
+    const full = DEFAULT_CONFIG.player.maxHp + DEFAULT_CONFIG.player.maxShield;
+    expect(DEFAULT_CONFIG.launcher.centerDamage).toBeGreaterThanOrEqual(full);
+    expect(DEFAULT_CONFIG.mines.centerDamage).toBeGreaterThanOrEqual(full);
   });
 });
