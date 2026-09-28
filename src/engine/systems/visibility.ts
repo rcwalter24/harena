@@ -1,6 +1,7 @@
 import { secondsToTicks } from '../config.ts';
 import { length } from '../dmath.ts';
 import type { GameState, PlayerState, Sighting } from '../types.ts';
+import { insideCloud } from './throwables.ts';
 
 /** Smoke clouds count as bushes; their ids are offset so they never equal a map bush index. */
 const SMOKE_BUSH = 1_000_000;
@@ -13,9 +14,7 @@ export function bushAt(state: GameState, x: number, y: number): number {
     if (x >= b.x && x <= b.x + b.w && y >= b.y && y <= b.y + b.h) return i;
   }
   for (const c of state.clouds) {
-    const dx = x - c.x;
-    const dy = y - c.y;
-    if (c.kind === 'smoke' && dx * dx + dy * dy <= c.radius * c.radius) return SMOKE_BUSH + c.id;
+    if (c.kind === 'smoke' && insideCloud(state, c, x, y)) return SMOKE_BUSH + c.id;
   }
   return -1;
 }

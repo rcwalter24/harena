@@ -1,5 +1,6 @@
 import type { BotState, EventView, InitInfo, PlayerView, ZoneView } from './botApi.ts';
 import { laserSegments, segmentPoints } from './systems/laser.ts';
+import { cloudRadius } from './systems/throwables.ts';
 import { hideLeft, isVisibleTo } from './systems/visibility.ts';
 import { zoneAt, zoneEnabled } from './systems/zone.ts';
 import type { GameState, PlayerState } from './types.ts';
@@ -101,7 +102,7 @@ export function buildBotState(state: GameState): Omit<BotState, 'self'> {
     })),
     thrown: state.throwables.map((g) => ({ id: g.id, ownerId: g.ownerId, kind: g.kind, x: g.x, y: g.y, vx: g.vx, vy: g.vy })),
     clouds: state.clouds.map((c) => ({
-      id: c.id, ownerId: c.ownerId, kind: c.kind, x: c.x, y: c.y, radius: c.radius,
+      id: c.id, ownerId: c.ownerId, kind: c.kind, x: c.x, y: c.y, radius: cloudRadius(state, c), fullRadius: c.radius,
       timeLeft: c.ticksLeft / config.tickRate,
       nextDamageIn: c.kind === 'gas' ? (config.tickRate - (c.age % config.tickRate)) / config.tickRate : null,
     })),

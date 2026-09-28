@@ -182,8 +182,10 @@ export interface ThrownView {
 }
 
 /**
- * A smoke or gas cloud (a circle). Smoke works like a bush. Gas hurts everyone whose centre is
- * inside at each whole second of its life, and slows them down.
+ * A smoke or gas cloud. It spreads from its centre up to `radius` but not through walls: it flows
+ * around wall corners, so a point is inside if the shortest path around walls from (x, y) to it
+ * is at most `radius`. Smoke works like a bush. Gas hurts everyone whose centre is inside at each
+ * whole second of its life, and slows them down.
  */
 export interface CloudView {
   id: number;
@@ -191,7 +193,9 @@ export interface CloudView {
   kind: ThrowName;
   x: number;
   y: number;
+  /** Current radius: it grows from 0 to fullRadius over rules.throwing.spreadTime seconds. */
   radius: number;
+  fullRadius: number;
   /** Seconds until it disappears. */
   timeLeft: number;
   /** Gas only: seconds until its next damage (at each whole second of its life); null for smoke. */

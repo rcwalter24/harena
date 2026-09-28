@@ -3,6 +3,7 @@ import { DEFAULT_CONFIG } from '../../src/engine/config.ts';
 import { step } from '../../src/engine/game.ts';
 import { validateReplay } from '../../src/engine/replay.ts';
 import { buildBotState, viewForPlayer } from '../../src/engine/snapshot.ts';
+import { cloudRadius, insideCloud } from '../../src/engine/systems/throwables.ts';
 import { isVisibleTo } from '../../src/engine/systems/visibility.ts';
 import type { GameState, ThrowKind } from '../../src/engine/types.ts';
 import { act, place, testGame } from '../helpers.ts';
@@ -50,6 +51,7 @@ describe('smoke and gas grenades', () => {
     place(s, 1, 700, 200);
     place(s, 2, 700, 800);
     throwAndSettle(s, 0, 'smoke', 150);
+    for (let i = 0; i < 30; i++) step(s, []); // let it spread to full size
     const c = s.clouds[0];
     place(s, 2, c.x + 20, c.y); // step into the smoke
     s.players[2].noiseTimer = 0;
@@ -87,10 +89,38 @@ describe('smoke and gas grenades', () => {
     expect(buildBotState(s).thrown).toHaveLength(1);
     for (let i = 0; i < 120 && s.throwables.length > 0; i++) step(s, []);
     const view = buildBotState(s).clouds[0];
-    expect(view).toMatchObject({ kind: 'smoke', ownerId: 0, radius: smoke.radius, nextDamageIn: null });
+    expect(view).toMatchObject({ kind: 'smoke', ownerId: 0, fullRadius: smoke.radius, nextDamageIn: null });
+    expect(view.radius).toBeLessThan(smoke.radius / 10); // it has only just started to spread
     expect(view.timeLeft).toBeCloseTo(smoke.duration, 1);
     for (let i = 0; i < smoke.duration * 30; i++) step(s, []);
     expect(s.clouds).toHaveLength(0);
+  });
+
+  it('spread to full size over the spread time', () => {
+    const s = testGame();
+    place(s, 0, 200, 500, 0);
+    throwAndSettle(s, 0, 'gas', 200);
+    const c = s.clouds[0];
+    expect(cloudRadius(s, c)).toBeLessThan(gas.radius / 10);
+    const spread = throwing.spreadTime * 30;
+    for (let i = 0; i < spread / 2; i++) step(s, []);
+    expect(cloudRadius(s, c)).toBeCloseTo((gas.radius * (c.age + 1)) / spread, 6); // linear growth
+    for (let i = 0; i < spread; i++) step(s, []);
+    expect(cloudRadius(s, c)).toBe(gas.radius);
+  });
+
+  it("don't pass through walls, but flow around corners", () => {
+    // Wall from y = 450 down to the bottom; the cloud sits left of it, near its top end.
+    const s = testGame({ walls: [{ x: 500, y: 450, w: 40, h: 550 }] });
+    place(s, 0, 300, 480, 0);
+    throwAndSettle(s, 0, 'smoke', 180); // stops at (480, 480)
+    for (let i = 0; i < 40; i++) step(s, []);
+    const c = s.clouds[0];
+    expect(insideCloud(s, c, 550, 460)).toBe(true); // just around the top corner (≈ 91 u of path)
+    expect(insideCloud(s, c, 550, 540)).toBe(false); // straight through the wall: within the radius, but no way around
+    expect(Math.hypot(550 - c.x, 540 - c.y)).toBeLessThan(smoke.radius);
+    const plain = testGame({ walls: [{ x: 500, y: 450, w: 40, h: 550 }], config: { throwing: { cloudsAroundCorners: 0 } } });
+    expect(insideCloud(plain, c, 550, 540)).toBe(true);
   });
 
   it('old replays load with smoke and gas off', () => {

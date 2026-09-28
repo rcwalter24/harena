@@ -199,7 +199,10 @@ Consequences:
   (keeping ×0.5 of its speed) and slides past players. Throwing reveals you like an attack and ends
   invulnerability.
 - Sliding grenades are listed in `state.thrown`. When one stops it becomes a **cloud** centred there
-  (`state.clouds`).
+  (`state.clouds`). It **spreads**: its radius grows from 0 to full size over 1 s. It **does not pass
+  through walls but flows around corners**: a point is inside if the shortest path around walls from
+  the cloud's centre to it is at most the current `radius` (like explosions, §5.9). "Inside" always
+  means the player's centre.
 - **Smoke** (radius 110 u, lasts 8 s) **works exactly like a bush** (§5.13): a player whose
   centre is in it is hidden from players outside it, the same reveal rules apply, and time in smoke
   counts toward the hiding limit.
@@ -487,8 +490,10 @@ export interface ThrownView {
 }
 
 /**
- * A smoke or gas cloud (a circle). Smoke works like a bush. Gas hurts everyone whose centre is
- * inside at each whole second of its life, and slows them down.
+ * A smoke or gas cloud. It spreads from its centre up to `radius` but not through walls: it flows
+ * around wall corners, so a point is inside if the shortest path around walls from (x, y) to it
+ * is at most `radius`. Smoke works like a bush. Gas hurts everyone whose centre is inside at each
+ * whole second of its life, and slows them down.
  */
 export interface CloudView {
   id: number;
@@ -496,7 +501,9 @@ export interface CloudView {
   kind: ThrowName;
   x: number;
   y: number;
+  /** Current radius: it grows from 0 to fullRadius over rules.throwing.spreadTime seconds. */
   radius: number;
+  fullRadius: number;
   /** Seconds until it disappears. */
   timeLeft: number;
   /** Gas only: seconds until its next damage (at each whole second of its life); null for smoke. */
@@ -790,6 +797,8 @@ Every value below is also available at runtime as `info.rules.<path>`, for examp
 | `throwing.radius` | 6 | u | Collision radius of a thrown grenade (it bounces off walls; players do not stop it). |
 | `throwing.bounce` | 0.5 | x | Speed kept when a thrown grenade bounces off a wall. |
 | `throwing.cooldown` | 0.5 | s | Minimum time between two throws. |
+| `throwing.spreadTime` | 1 | s | A new cloud grows from nothing to its full radius over this long (linearly). |
+| `throwing.cloudsAroundCorners` | 1 | 0/1 | Clouds don't pass through walls but flow around corners (1): a point is inside if the shortest path around walls from the cloud's centre is within its radius. With 0 a cloud is a plain circle. |
 
 **smoke**
 

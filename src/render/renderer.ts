@@ -1,6 +1,8 @@
 import { secondsToTicks } from '../engine/config.ts';
 import { blastDamageAt, grenadeImpact } from '../engine/systems/explosives.ts';
 import { laserSegments } from '../engine/systems/laser.ts';
+import { cloudRadius } from '../engine/systems/throwables.ts';
+import { pathAroundWalls } from '../engine/geometry.ts';
 import { bushAt, hideLeft, isExposed, isVisibleTo } from '../engine/systems/visibility.ts';
 import { zoneAt, zoneEnabled } from '../engine/systems/zone.ts';
 import type { Cloud, GameEvent, GameState, PlayerState } from '../engine/types.ts';
@@ -125,16 +127,15 @@ export class Renderer {
   }
 
   /**
-   * The damage map of a blast at (x, y): each cell is shaded by the damage a player whose centre
-   * stands there would take (the engine's own rule, so walls cast shadows and the blast wraps
-   * around corners). Cached: mines and grenade impact points don't move.
+   * A shaded map around (x, y): each cell gets `color` with opacity `shade(px, py)` (0..1; 0 =
+   * nothing). Used for blast damage and for clouds, which both follow walls, so their true shape
+   * shows. Cached by `key` (blasts and clouds don't move).
    */
-  private blastField(state: GameState, source: 'grenade' | 'mine', x: number, y: number): BlastField {
-    const key = `${state.map.id}|${source}|${x}|${y}|${state.config.explosions.aroundCorners}`;
+  private shadedField(
+    key: string, state: GameState, x: number, y: number, reach: number, color: [number, number, number], shade: (px: number, py: number) => number,
+  ): BlastField {
     const cached = this.fields.get(key);
     if (cached) return cached;
-    const { centerDamage, blastRadius } = source === 'grenade' ? state.config.launcher : state.config.mines;
-    const reach = blastRadius + state.config.player.radius;
     const n = Math.ceil((2 * reach) / FIELD_CELL);
     const x0 = x - (n * FIELD_CELL) / 2;
     const y0 = y - (n * FIELD_CELL) / 2;
@@ -146,13 +147,13 @@ export class Renderer {
         const px = x0 + (i + 0.5) * FIELD_CELL;
         const py = y0 + (j + 0.5) * FIELD_CELL;
         if (px < 0 || py < 0 || px > state.map.width || py > state.map.height) continue;
-        const damage = blastDamageAt(state, source, x, y, px, py);
-        if (damage <= 0) continue;
+        const a = shade(px, py);
+        if (a <= 0) continue;
         const k = 4 * (j * n + i);
-        img.data[k] = 255;
-        img.data[k + 1] = 64;
-        img.data[k + 2] = 48;
-        img.data[k + 3] = Math.round(255 * (0.12 + 0.78 * Math.min(1, damage / centerDamage)));
+        img.data[k] = color[0];
+        img.data[k + 1] = color[1];
+        img.data[k + 2] = color[2];
+        img.data[k + 3] = Math.round(255 * Math.min(1, a));
       }
     }
     cctx.putImageData(img, 0, 0);
@@ -160,6 +161,30 @@ export class Renderer {
     if (this.fields.size > 64) this.fields.clear();
     this.fields.set(key, field);
     return field;
+  }
+
+  /**
+   * The damage map of a blast at (x, y): darker where a player whose centre stands there would
+   * take more damage (the engine's own rule, so walls cast shadows and it wraps around corners).
+   */
+  private blastField(state: GameState, source: 'grenade' | 'mine', x: number, y: number): BlastField {
+    const { centerDamage, blastRadius } = source === 'grenade' ? state.config.launcher : state.config.mines;
+    const key = `${state.map.id}|${source}|${x}|${y}|${state.config.explosions.aroundCorners}`;
+    return this.shadedField(key, state, x, y, blastRadius + state.config.player.radius, [255, 64, 48], (px, py) => {
+      const damage = blastDamageAt(state, source, x, y, px, py);
+      return damage > 0 ? 0.12 + 0.78 * Math.min(1, damage / centerDamage) : 0;
+    });
+  }
+
+  /** A cloud's full-size shape (it flows around walls), densest at the centre. */
+  private cloudField(state: GameState, c: Cloud): BlastField {
+    const aroundWalls = state.config.throwing.cloudsAroundCorners > 0;
+    const color: [number, number, number] = c.kind === 'smoke' ? [200, 205, 213] : [140, 200, 60];
+    const [inner, outer] = c.kind === 'smoke' ? [0.85, 0.5] : [0.55, 0.22];
+    return this.shadedField(`${state.map.id}|cloud|${c.id}`, state, c.x, c.y, c.radius, color, (px, py) => {
+      const d = aroundWalls ? pathAroundWalls(c.x, c.y, px, py, state.map.walls, c.radius) : Math.hypot(px - c.x, py - c.y);
+      return d <= c.radius ? inner - (inner - outer) * (d / c.radius) : 0;
+    });
   }
 
   /** Turn engine events into short-lived visual effects. */
@@ -493,40 +518,21 @@ export class Renderer {
     const rate = state.config.tickRate;
     for (const c of state.clouds) {
       if (c.kind !== kind) continue;
-      const fade = Math.min(1, c.age / (0.3 * rate), c.ticksLeft / rate);
+      const fade = Math.min(1, c.ticksLeft / rate);
+      const field = this.cloudField(state, c);
       ctx.save();
-      if (kind === 'smoke') {
-        // A lumpy cloud: a core plus puffs at fixed angles (from the id, so each cloud differs).
-        ctx.globalAlpha = 0.62 * fade;
-        ctx.fillStyle = '#c3c9d2';
-        ctx.beginPath();
-        ctx.arc(c.x, c.y, c.radius * 0.72, 0, Math.PI * 2);
-        ctx.fill();
-        for (let i = 0; i < 8; i++) {
-          const a = (i / 8) * Math.PI * 2 + (c.id % 7) * 0.4 + c.age / (rate * 12);
-          const d = c.radius * (0.5 + 0.08 * ((c.id + i) % 3));
-          ctx.beginPath();
-          ctx.arc(c.x + Math.cos(a) * d, c.y + Math.sin(a) * d, c.radius * 0.42, 0, Math.PI * 2);
-          ctx.fill();
-        }
-      } else {
-        const pulse = 1 - (c.age % rate) / rate;
-        const fill = ctx.createRadialGradient(c.x, c.y, 0, c.x, c.y, c.radius);
-        fill.addColorStop(0, `rgba(150, 205, 70, ${0.42 * fade})`);
-        fill.addColorStop(1, `rgba(120, 180, 50, ${0.18 * fade})`);
-        ctx.fillStyle = fill;
-        ctx.beginPath();
-        ctx.arc(c.x, c.y, c.radius, 0, Math.PI * 2);
-        ctx.fill();
-        ctx.strokeStyle = `rgba(170, 225, 90, ${(0.35 + 0.45 * pulse * pulse) * fade})`;
-        ctx.lineWidth = 2;
-        ctx.setLineDash([6, 6]);
-        ctx.lineDashOffset = c.age / 2;
-        ctx.stroke();
-      }
+      // Spreading: only the part within the current radius shows.
+      ctx.beginPath();
+      ctx.arc(c.x, c.y, cloudRadius(state, c), 0, Math.PI * 2);
+      ctx.clip();
+      // Gas throbs on each damage second; smoke breathes slowly.
+      const pulse = kind === 'gas' ? 0.75 + 0.25 * (1 - (c.age % rate) / rate) ** 2 : 0.92 + 0.08 * Math.sin(c.age / (rate * 0.8) + c.id);
+      ctx.globalAlpha = fade * pulse;
+      ctx.drawImage(field.image, field.x, field.y, field.size, field.size);
       ctx.restore();
     }
   }
+
 
   private drawGrenades(state: GameState, prev: FrameCapture | null, alpha: number): void {
     const { ctx } = this;

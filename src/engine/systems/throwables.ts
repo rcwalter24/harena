@@ -1,6 +1,6 @@
 import { secondsToTicks } from '../config.ts';
 import { direction, length } from '../dmath.ts';
-import { segmentRectEntry, type SegmentEntry } from '../geometry.ts';
+import { pathAroundWalls, segmentRectEntry, type SegmentEntry } from '../geometry.ts';
 import { solidRects, type ActionInput, type Cloud, type GameState } from '../types.ts';
 import { applyDamage } from './combat.ts';
 
@@ -87,13 +87,27 @@ export function updateThrowables(state: GameState): void {
   state.throwables = moving;
 }
 
-export function insideCloud(cloud: Cloud, x: number, y: number): boolean {
-  return length(x - cloud.x, y - cloud.y) <= cloud.radius;
+/** The cloud's radius now: it grows linearly to its full size over throwing.spreadTime. */
+export function cloudRadius(state: GameState, cloud: Cloud): number {
+  const spread = secondsToTicks(state.config.throwing.spreadTime, state.config);
+  return spread > 0 ? cloud.radius * Math.min(1, (cloud.age + 1) / spread) : cloud.radius;
+}
+
+/**
+ * Is the point inside the cloud? Clouds don't pass through walls but flow around corners: what
+ * counts is the shortest path around walls from the cloud's centre (a plain circle with
+ * throwing.cloudsAroundCorners 0, as in older replays).
+ */
+export function insideCloud(state: GameState, cloud: Cloud, x: number, y: number): boolean {
+  const r = cloudRadius(state, cloud);
+  if (length(x - cloud.x, y - cloud.y) > r) return false;
+  if (state.config.throwing.cloudsAroundCorners <= 0) return true;
+  return pathAroundWalls(cloud.x, cloud.y, x, y, state.map.walls, r) !== Infinity;
 }
 
 /** Is the point inside any gas cloud? (Players there move slower.) */
 export function inGas(state: GameState, x: number, y: number): boolean {
-  return state.clouds.some((c) => c.kind === 'gas' && insideCloud(c, x, y));
+  return state.clouds.some((c) => c.kind === 'gas' && insideCloud(state, c, x, y));
 }
 
 /** Age every cloud: gas hurts everyone inside at each whole second of its life; expired clouds vanish. */
@@ -105,7 +119,7 @@ export function updateClouds(state: GameState): void {
     if (cloud.kind !== 'gas' || cloud.age % config.tickRate !== 0) continue;
     const owner = state.players[cloud.ownerId];
     for (const p of state.players) {
-      if (p.alive && insideCloud(cloud, p.x, p.y)) applyDamage(state, p, config.gas.damagePerSecond, owner, 'gas');
+      if (p.alive && insideCloud(state, cloud, p.x, p.y)) applyDamage(state, p, config.gas.damagePerSecond, owner, 'gas');
     }
   }
   state.clouds = state.clouds.filter((c) => c.ticksLeft > 0);

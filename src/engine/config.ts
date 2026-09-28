@@ -84,6 +84,8 @@ export interface GameConfig {
     radius: number;
     bounce: number;
     cooldown: number;
+    spreadTime: number;
+    cloudsAroundCorners: number;
   };
   smoke: {
     pickupAmount: number;
@@ -217,6 +219,8 @@ export const DEFAULT_CONFIG: GameConfig = {
     radius: 6,
     bounce: 0.5,
     cooldown: 0.5,
+    spreadTime: 1,
+    cloudsAroundCorners: 1,
   },
   smoke: {
     pickupAmount: 1,
@@ -341,6 +345,8 @@ export const CONFIG_DOCS: Record<string, ConfigDoc> = {
   'throwing.radius': { unit: 'u', description: 'Collision radius of a thrown grenade (it bounces off walls; players do not stop it).' },
   'throwing.bounce': { unit: 'x', description: 'Speed kept when a thrown grenade bounces off a wall.' },
   'throwing.cooldown': { unit: 's', description: 'Minimum time between two throws.' },
+  'throwing.spreadTime': { unit: 's', description: 'A new cloud grows from nothing to its full radius over this long (linearly).' },
+  'throwing.cloudsAroundCorners': { unit: '0/1', description: "Clouds don't pass through walls but flow around corners (1): a point is inside if the shortest path around walls from the cloud's centre is within its radius. With 0 a cloud is a plain circle." },
   'smoke.pickupAmount': { unit: 'grenades', description: 'Smoke grenades gained from a smoke item.' },
   'smoke.maxCarry': { unit: 'grenades', description: 'Maximum smoke grenades carried.' },
   'smoke.radius': { unit: 'u', description: 'Radius of the smoke cloud (it works like a bush).' },

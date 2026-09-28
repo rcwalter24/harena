@@ -199,7 +199,10 @@ Consequences:
   (keeping ×{{throwing.bounce}} of its speed) and slides past players. Throwing reveals you like an attack and ends
   invulnerability.
 - Sliding grenades are listed in `state.thrown`. When one stops it becomes a **cloud** centred there
-  (`state.clouds`).
+  (`state.clouds`). It **spreads**: its radius grows from 0 to full size over {{throwing.spreadTime}} s. It **does not pass
+  through walls but flows around corners**: a point is inside if the shortest path around walls from
+  the cloud's centre to it is at most the current `radius` (like explosions, §5.9). "Inside" always
+  means the player's centre.
 - **Smoke** (radius {{smoke.radius}} u, lasts {{smoke.duration}} s) **works exactly like a bush** (§5.13): a player whose
   centre is in it is hidden from players outside it, the same reveal rules apply, and time in smoke
   counts toward the hiding limit.
