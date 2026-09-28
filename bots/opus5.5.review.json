@@ -1,8 +1,8 @@
 {
   "version": 1,
   "file": "opus5.5.js",
-  "sourceHash": "12ac29810de6fe",
-  "reviewedAt": "2026-09-28T11:00:50.287Z",
+  "sourceHash": "183acdbd7a3dbb",
+  "reviewedAt": "2026-09-28T14:55:52.988Z",
   "static": {
     "ok": true,
     "findings": []
@@ -10,24 +10,24 @@
   "jev": {
     "model": "jev-1.13.0",
     "risks": {
-      "outsideAccess": 0.13,
-      "globalTampering": 0.11,
+      "outsideAccess": 0.1,
+      "globalTampering": 0.16,
       "backgroundWork": 0.05,
-      "obfuscation": 0.09,
+      "obfuscation": 0.12,
       "actionExploit": 0.04,
       "reviewerInjection": 0.05
     },
     "conformance": {
       "choice": "follows",
-      "confidence": 0.84,
-      "follows": 0.89
+      "confidence": 0.96,
+      "follows": 0.97
     },
     "quality": {
-      "score": 2.96,
-      "confidence": 0.96,
+      "score": 2.98,
+      "confidence": 0.98,
       "max": 3
     },
-    "inputTokens": 15498
+    "inputTokens": 22687
   },
   "verdict": "pass",
   "reasons": []
