@@ -237,17 +237,13 @@ export class Renderer {
     }
   }
 
-  /**
-   * Safe zone: the area outside is tinted, the current edge is a solid line, and the final
-   * circle is dashed from 10 s before shrinking starts.
-   */
+  /** Safe zone: the area outside is tinted and the current edge is a solid line. */
   private drawZone(state: GameState, alpha: number): void {
     if (!zoneEnabled(state.config)) return;
     const { ctx } = this;
     const { width, height } = state.map;
     const zone = zoneAt(state);
     const r = lerp(zoneAt(state, Math.max(0, state.tick - 1)).radius, zone.radius, alpha);
-    const announce = zone.startTick - 10 * state.config.tickRate;
     ctx.save();
     ctx.beginPath();
     ctx.rect(0, 0, width, height);
@@ -263,15 +259,6 @@ export class Renderer {
       ctx.beginPath();
       ctx.arc(zone.x, zone.y, r, 0, Math.PI * 2);
       ctx.stroke();
-    }
-    if (state.tick >= announce && zone.finalRadius < r - 1) {
-      ctx.strokeStyle = 'rgba(226, 103, 74, 0.55)';
-      ctx.lineWidth = 2;
-      ctx.setLineDash([12, 10]);
-      ctx.beginPath();
-      ctx.arc(zone.x, zone.y, zone.finalRadius, 0, Math.PI * 2);
-      ctx.stroke();
-      ctx.setLineDash([]);
     }
     ctx.restore();
   }
