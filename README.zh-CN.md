@@ -49,6 +49,15 @@ npm run dev
 3. 点 **+ 添加机器人**并粘贴，代码块会被自动提取出来。如果机器人违反了规则，对话框会
    说明原因，点 **复制给 AI 的修复请求**就能得到一段可以直接发回给 AI 的话。
 
+可选：如果 AI 能运行代码（例如可以上传文件的 Claude 或 ChatGPT），可以把设置页上的**测试包**也发给它。
+测试包 `harena-sim.mjs` 是单文件的真实引擎、规则和沙箱，需要 Node.js 18 以上，AI 可以先让自己的机器人和
+自带的机器人打几局再回复你：
+
+```bash
+node harena-sim.mjs mybot.js --vs gunner,chaser --games 20   # 胜率、命中率、报错
+node harena-sim.mjs mybot.js --games 1 --trace trace.json    # 逐帧记录一局
+```
+
 这样添加的机器人保存在你的浏览器里。如果想让所有 clone 这个仓库的人都能用，就把它保存为
 `bots/<名字>.js`，它会自动出现在设置页。对战时 **机器人日志** 会显示报错和超时，把这些贴回给 AI
 可以让它继续改进。在设置页点击机器人的名字可以给它改显示名。
@@ -122,7 +131,7 @@ npm run batch -- --bots gunner,gunner,chaser,chaser --games 50 --replays out/rep
 | `npm run dev` | 启动开发服务器 |
 | `npm test` | 运行测试 |
 | `npm run typecheck` | 类型检查（引擎部分不带 DOM 类型单独检查） |
-| `npm run build` | 类型检查并构建静态网站到 `dist/` |
+| `npm run build` | 类型检查，并把静态网站和测试包（`dist/harena-sim.mjs`）构建到 `dist/` |
 | `npm run docs` | 根据模板、配置、类型和示例机器人重新生成 `BOT_API.md` |
 | `npm run batch -- --bots a,b,…` | 无界面批量对战，输出胜率和统计 |
 | `npm run review` | 对新增或改动的机器人做静态检查 + Jev 审查（`-- --all`、`-- file.js`、`-- --static-only`） |
@@ -139,6 +148,7 @@ npm run batch -- --bots gunner,gunner,chaser,chaser --games 50 --replays out/rep
 | `src/video/` | 回放导出视频 |
 | `src/review/` | 静态检查和 Jev 审查 |
 | `src/batch/`、`cli/` | 批量对战及其命令行 |
+| `src/sim/` | 单文件测试包（`harena-sim.mjs`） |
 | `bots/` | 机器人文件及其审查结果 |
 | `maps/` | 地图（JSON） |
 | `docs/` | `BOT_API.md` 模板和 README 配图 |

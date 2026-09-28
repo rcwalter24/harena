@@ -46,6 +46,11 @@ git history; this file lists the rules that must keep holding.
   build (`npm run build`, e.g. a hosted copy) has no dev-server API: it shows the reviews
   bundled from `bots/*.review.json` and no Review button.
 
+- **Test kit** (`src/sim/cli.ts` → `dist/harena-sim.mjs` via `vite.sim.config.ts`): one Node file
+  with the engine, maps, built-in bots and the real worker sandbox (it starts itself as the bot
+  worker). It must play exactly the games `npm run batch` plays (`tests/sim.test.ts`), so it
+  reuses the file-system-free game loop in `src/batch/games.ts`.
+
 ## Conventions
 
 - Node 26 runs `.ts` directly (type stripping): use `.ts` import extensions and erasable syntax

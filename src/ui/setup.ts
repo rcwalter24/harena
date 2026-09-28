@@ -86,6 +86,7 @@ export function mountSetup(app: HTMLElement, callbacks: SetupCallbacks): () => v
               <li>${t("Copy the AI's whole reply.")}</li>
               <li><button id="add-bot">${t('+ Add bot')}</button> ${t('and paste it in.')}</li>
             </ol>
+            <div class="note">${t('Optional: if the AI can run code, also give it the <a href="harena-sim.mjs" download>test kit</a> (the real engine in one file) so it can try its bot first.')}</div>
           </div>
           <h2>${t('Bots')}</h2>
           <div id="bot-list" class="bot-list"></div>

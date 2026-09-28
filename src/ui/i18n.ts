@@ -66,6 +66,8 @@ export const ZH: Record<string, string> = {
   "Copy the AI's whole reply.": '复制 AI 的完整回复。',
   '+ Add bot': '+ 添加机器人',
   'and paste it in.': '然后把回复粘贴进去。',
+  'Optional: if the AI can run code, also give it the <a href="harena-sim.mjs" download>test kit</a> (the real engine in one file) so it can try its bot first.':
+    '可选：如果 AI 能运行代码，可以把<a href="harena-sim.mjs" download>测试包</a>（单文件的真实引擎）也发给它，让它先自己测一测。',
   Bots: '机器人',
   'Other players': '其他玩家',
   '+ You (keyboard)': '+ 你自己（键盘）',

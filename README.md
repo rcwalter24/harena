@@ -53,6 +53,15 @@ The setup page walks you through it — no coding needed:
    breaks a rule, the dialog says why and **Copy a fix request** gives you a message to send
    back to the AI.
 
+Optionally, if the AI can run code (e.g. Claude or ChatGPT with file uploads), also give it the
+**test kit** linked on the setup page: `harena-sim.mjs`, the real engine, rules and sandbox in one
+Node.js file. The AI can then play its bot against the built-in ones before answering:
+
+```bash
+node harena-sim.mjs mybot.js --vs gunner,chaser --games 20   # win rates, accuracy, errors
+node harena-sim.mjs mybot.js --games 1 --trace trace.json    # one game, tick by tick
+```
+
 Bots added this way are saved in your browser. To share a bot with everyone who clones the
 repository, save it as `bots/<name>.js` instead — it shows up on the setup page automatically.
 During a match, the **Bot log** shows errors and slow replies; paste them back to the AI to
@@ -131,7 +140,7 @@ when the bot changes. Everything else works without a key.
 | `npm run dev` | Start the dev server |
 | `npm test` | Run the tests |
 | `npm run typecheck` | Type-check the app, and the engine without DOM typings |
-| `npm run build` | Type-check and build a static site into `dist/` |
+| `npm run build` | Type-check and build the static site and the test kit (`dist/harena-sim.mjs`) into `dist/` |
 | `npm run docs` | Regenerate `BOT_API.md` from the template, config, types and example bot |
 | `npm run batch -- --bots a,b,…` | Headless batch matches with win rates and stats |
 | `npm run review` | Static check + Jev review of new or changed bots (`-- --all`, `-- file.js`, `-- --static-only`) |
@@ -148,6 +157,7 @@ when the bot changes. Everything else works without a key.
 | `src/video/` | Replay → video export |
 | `src/review/` | Static check and Jev review |
 | `src/batch/`, `cli/` | Headless batch runner and its command line |
+| `src/sim/` | The single-file test kit (`harena-sim.mjs`) |
 | `bots/` | Bot files and their saved reviews |
 | `maps/` | Maps (JSON) |
 | `docs/` | `BOT_API.md` template and README images |

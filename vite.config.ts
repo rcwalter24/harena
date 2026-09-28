@@ -28,6 +28,16 @@ function botReviewApi(): Plugin {
   return {
     name: 'harena-bot-review-api',
     configureServer(server) {
+      // The test kit is built with the site (npm run build); serve the last build in dev too.
+      server.middlewares.use('/harena-sim.mjs', (_req, res) => {
+        try {
+          res.setHeader('Content-Type', 'text/javascript');
+          res.end(readFileSync('dist/harena-sim.mjs'));
+        } catch {
+          res.statusCode = 404;
+          res.end('The test kit is not built yet: run npm run build.');
+        }
+      });
       server.middlewares.use('/api/reviews', async (req, res) => {
         if (req.method !== 'GET') return sendJson(res, 405, { error: 'GET only' });
         const { readAllReviews } = await import('./src/review/node.ts');

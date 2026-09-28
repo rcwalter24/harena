@@ -15,6 +15,8 @@ export async function botPrompt(): Promise<string> {
     '- Export init(info) and decide(state) exactly as the spec describes, plus meta = { name, author } with your own model name as the author.',
     '- No imports, network, timers or async code. decide() must stay well within the time budget.',
     '',
+    `Optional: if you can run JavaScript (Node.js 18+), you may test the bot before replying with the official simulator, the real Harena engine in one file: ${new URL('harena-sim.mjs', location.href).href} (the user may also attach it). For example: node harena-sim.mjs mybot.js --vs gunner,chaser --games 20 (--help lists the options). This is only a suggestion; if you can't run code, just write the bot from the spec.`,
+    '',
     '<spec>',
     spec,
     '</spec>',

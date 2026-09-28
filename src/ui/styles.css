@@ -535,3 +535,5 @@ button.primary:disabled:hover { border-color: var(--accent); }
 .bot-check .fix-row { margin-top: 6px; }
 .modal-actions .left { margin-right: auto; }
 .modal button { font-size: 13px; padding: 5px 12px; }
+.starter .note { margin-top: 8px; }
+.starter .note a { color: var(--accent); }
