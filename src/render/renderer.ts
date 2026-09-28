@@ -1,8 +1,7 @@
 import { secondsToTicks } from '../engine/config.ts';
-import { blastDamageAt, grenadeImpact } from '../engine/systems/explosives.ts';
+import { blastDamageMap } from '../engine/systems/explosives.ts';
 import { laserSegments } from '../engine/systems/laser.ts';
-import { cloudRadius, holeRadius } from '../engine/systems/throwables.ts';
-import { pathAroundWalls } from '../engine/geometry.ts';
+import { pathsAroundWallsFrom } from '../engine/geometry.ts';
 import { bushAt, hideLeft, isExposed, isVisibleTo } from '../engine/systems/visibility.ts';
 import { zoneAt, zoneEnabled } from '../engine/systems/zone.ts';
 import type { Cloud, CloudHole, GameEvent, GameState, PlayerState } from '../engine/types.ts';
@@ -60,6 +59,56 @@ interface BlastField {
 
 /** World units per cell of a blast damage map. */
 const FIELD_CELL = 3;
+/** Finer cells for cloud shapes, whose edges along walls stay on screen for seconds. */
+const CLOUD_CELL = 2;
+/** How far (world units) the soft edge of a cloud or a hole in it fades over. */
+const CLOUD_FEATHER = 14;
+
+type Canvas2D = OffscreenCanvas | HTMLCanvasElement;
+type Context2D = CanvasRenderingContext2D | OffscreenCanvasRenderingContext2D;
+
+function newCanvas(width: number, height: number): Canvas2D {
+  return typeof OffscreenCanvas !== 'undefined' ? new OffscreenCanvas(width, height) : Object.assign(document.createElement('canvas'), { width, height });
+}
+
+/** Smooth 0 → 1 as t goes 0 → 1. */
+function smoothstep(t: number): number {
+  const u = Math.min(1, Math.max(0, t));
+  return u * u * (3 - 2 * u);
+}
+
+/** A disc of radius r at (x, y), opaque inside and fading to nothing over its outer CLOUD_FEATHER. */
+function softDisc(c: Context2D, x: number, y: number, r: number): CanvasGradient {
+  const g = c.createRadialGradient(x, y, 0, x, y, r);
+  g.addColorStop(0, '#000');
+  g.addColorStop(Math.max(0, 1 - CLOUD_FEATHER / r), '#000');
+  g.addColorStop(1, 'rgba(0,0,0,0)');
+  return g;
+}
+
+/** Drifting puffs that give a cloud its texture: fixed per cloud, animated by its age. */
+interface Puff {
+  angle: number;
+  orbit: number;
+  size: number;
+  spin: number;
+  light: boolean;
+}
+
+function cloudPuffs(id: number): Puff[] {
+  let seed = (id * 2654435761) >>> 0;
+  const next = () => {
+    seed = (Math.imul(seed ^ (seed >>> 15), 2246822519) + 0x9e3779b9) >>> 0;
+    return seed / 4294967296;
+  };
+  return Array.from({ length: 11 }, (_, i) => ({
+    angle: next() * Math.PI * 2,
+    orbit: i === 0 ? 0 : 0.2 + 0.55 * next(),
+    size: 0.3 + 0.25 * next(),
+    spin: (next() < 0.5 ? -1 : 1) * (0.12 + 0.2 * next()),
+    light: i % 2 === 0,
+  }));
+}
 
 export interface RenderOptions {
   debug: boolean;
@@ -104,8 +153,12 @@ export class Renderer {
   private offsetY = 0;
   private effects: Effect[] = [];
   private fields = new Map<string, BlastField>();
-  /** Scratch layer for clouds with holes in them. */
-  private cloudLayer: OffscreenCanvas | HTMLCanvasElement | null = null;
+  /** Scratch layers for composing a cloud, and a hole in it. */
+  private cloudLayer: Canvas2D | null = null;
+  private holeLayer: Canvas2D | null = null;
+  private puffs = new Map<number, Puff[]>();
+  /** How far between the previous tick and this one the current frame is (0..1). */
+  private subTick = 1;
 
   constructor(canvas: HTMLCanvasElement | OffscreenCanvas, options: RendererOptions = {}) {
     this.canvas = canvas;
@@ -134,20 +187,22 @@ export class Renderer {
    * shows. Cached by `key` (blasts and clouds don't move).
    */
   private shadedField(
-    key: string, state: GameState, x: number, y: number, reach: number, color: [number, number, number], shade: (px: number, py: number) => number,
+    key: string, state: GameState, x: number, y: number, reach: number, color: [number, number, number],
+    makeShade: () => (px: number, py: number) => number, cell = FIELD_CELL,
   ): BlastField {
     const cached = this.fields.get(key);
     if (cached) return cached;
-    const n = Math.ceil((2 * reach) / FIELD_CELL);
-    const x0 = x - (n * FIELD_CELL) / 2;
-    const y0 = y - (n * FIELD_CELL) / 2;
-    const canvas = typeof OffscreenCanvas !== 'undefined' ? new OffscreenCanvas(n, n) : Object.assign(document.createElement('canvas'), { width: n, height: n });
-    const cctx = canvas.getContext('2d') as CanvasRenderingContext2D | OffscreenCanvasRenderingContext2D;
+    const shade = makeShade();
+    const n = Math.ceil((2 * reach) / cell);
+    const x0 = x - (n * cell) / 2;
+    const y0 = y - (n * cell) / 2;
+    const canvas = newCanvas(n, n);
+    const cctx = canvas.getContext('2d') as Context2D;
     const img = cctx.createImageData(n, n);
     for (let j = 0; j < n; j++) {
       for (let i = 0; i < n; i++) {
-        const px = x0 + (i + 0.5) * FIELD_CELL;
-        const py = y0 + (j + 0.5) * FIELD_CELL;
+        const px = x0 + (i + 0.5) * cell;
+        const py = y0 + (j + 0.5) * cell;
         if (px < 0 || py < 0 || px > state.map.width || py > state.map.height) continue;
         const a = shade(px, py);
         if (a <= 0) continue;
@@ -159,7 +214,7 @@ export class Renderer {
       }
     }
     cctx.putImageData(img, 0, 0);
-    const field = { image: canvas, x: x0, y: y0, size: n * FIELD_CELL };
+    const field = { image: canvas, x: x0, y: y0, size: n * cell };
     if (this.fields.size > 64) this.fields.clear();
     this.fields.set(key, field);
     return field;
@@ -172,53 +227,55 @@ export class Renderer {
   private blastField(state: GameState, source: 'grenade' | 'mine', x: number, y: number): BlastField {
     const { centerDamage, blastRadius } = source === 'grenade' ? state.config.launcher : state.config.mines;
     const key = `${state.map.id}|${source}|${x}|${y}|${state.config.explosions.aroundCorners}`;
-    return this.shadedField(key, state, x, y, blastRadius + state.config.player.radius, [255, 64, 48], (px, py) => {
-      const damage = blastDamageAt(state, source, x, y, px, py);
-      return damage > 0 ? 0.12 + 0.78 * Math.min(1, damage / centerDamage) : 0;
+    return this.shadedField(key, state, x, y, blastRadius + state.config.player.radius, [255, 64, 48], () => {
+      const damageAt = blastDamageMap(state, source, x, y);
+      return (px, py) => {
+        const damage = damageAt(px, py);
+        return damage > 0 ? 0.12 + 0.78 * Math.min(1, damage / centerDamage) : 0;
+      };
     });
   }
 
   /** Where a hole blown in a cloud is clear (the blast's reach around walls), at its full size. */
   private holeMask(state: GameState, h: CloudHole): BlastField {
-    return this.shadedField(`${state.map.id}|hole|${h.x}|${h.y}|${h.radius}`, state, h.x, h.y, h.radius, [0, 0, 0], (px, py) =>
-      pathAroundWalls(h.x, h.y, px, py, state.map.walls, h.radius) === Infinity ? 0 : 1);
+    return this.shadedField(`${state.map.id}|hole|${h.x}|${h.y}|${h.radius}`, state, h.x, h.y, h.radius, [0, 0, 0], () => {
+      const path = pathsAroundWallsFrom(h.x, h.y, state.map.walls, h.radius);
+      return (px, py) => (path(px, py) === Infinity ? 0 : 1);
+    }, CLOUD_CELL);
   }
 
-  /** The cloud's image with its holes erased (each shrinking as it closes). */
-  private cloudImage(state: GameState, c: Cloud, field: BlastField): CanvasImageSource {
-    const holes = c.holes.filter((h) => holeRadius(state, h) > 0);
-    if (holes.length === 0) return field.image;
-    const px = Math.round(field.size / FIELD_CELL);
-    if (!this.cloudLayer) this.cloudLayer = typeof OffscreenCanvas !== 'undefined' ? new OffscreenCanvas(px, px) : document.createElement('canvas');
-    const layer = this.cloudLayer;
-    layer.width = px; // also clears it
-    layer.height = px;
-    const lctx = layer.getContext('2d') as CanvasRenderingContext2D | OffscreenCanvasRenderingContext2D;
-    lctx.drawImage(field.image, 0, 0);
-    lctx.globalCompositeOperation = 'destination-out';
-    const scale = px / field.size;
-    for (const h of holes) {
-      const mask = this.holeMask(state, h);
-      lctx.save();
-      lctx.setTransform(scale, 0, 0, scale, -field.x * scale, -field.y * scale);
-      lctx.beginPath();
-      lctx.arc(h.x, h.y, holeRadius(state, h), 0, Math.PI * 2);
-      lctx.clip();
-      lctx.drawImage(mask.image, mask.x, mask.y, mask.size, mask.size);
-      lctx.restore();
-    }
-    return layer;
-  }
-
-  /** A cloud's full-size shape (it flows around walls), densest at the centre. */
+  /**
+   * A cloud's full-size shape (it flows around walls): densest at the centre, with a soft rim.
+   * Its colour is only the base tint; drawClouds adds drifting puffs on top.
+   */
   private cloudField(state: GameState, c: Cloud): BlastField {
     const aroundWalls = state.config.throwing.cloudsAroundCorners > 0;
-    const color: [number, number, number] = c.kind === 'smoke' ? [200, 205, 213] : [140, 200, 60];
-    const [inner, outer] = c.kind === 'smoke' ? [0.85, 0.5] : [0.55, 0.22];
-    return this.shadedField(`${state.map.id}|cloud|${c.id}`, state, c.x, c.y, c.radius, color, (px, py) => {
-      const d = aroundWalls ? pathAroundWalls(c.x, c.y, px, py, state.map.walls, c.radius) : Math.hypot(px - c.x, py - c.y);
-      return d <= c.radius ? inner - (inner - outer) * (d / c.radius) : 0;
-    });
+    const color: [number, number, number] = c.kind === 'smoke' ? [196, 201, 210] : [132, 196, 58];
+    const [inner, outer] = c.kind === 'smoke' ? [0.9, 0.62] : [0.6, 0.3];
+    const key = `${state.map.id}|cloud|${c.id}|${c.x}|${c.y}|${c.radius}|${aroundWalls}`;
+    return this.shadedField(key, state, c.x, c.y, c.radius, color, () => {
+      const path = aroundWalls ? pathsAroundWallsFrom(c.x, c.y, state.map.walls, c.radius) : (px: number, py: number) => Math.hypot(px - c.x, py - c.y);
+      return (px, py) => {
+        const d = path(px, py);
+        if (d > c.radius) return 0;
+        return (inner - (inner - outer) * (d / c.radius)) * smoothstep((c.radius - d) / CLOUD_FEATHER);
+      };
+    }, CLOUD_CELL);
+  }
+
+  /** A scratch canvas at least width × height, cleared, with its context reset. */
+  private scratch(which: 'cloudLayer' | 'holeLayer', width: number, height: number): Context2D {
+    let layer = this[which];
+    if (!layer || layer.width < width || layer.height < height) {
+      layer = newCanvas(Math.max(width, layer?.width ?? 0), Math.max(height, layer?.height ?? 0));
+      this[which] = layer;
+    }
+    const lctx = layer.getContext('2d') as Context2D;
+    lctx.setTransform(1, 0, 0, 1, 0, 0);
+    lctx.globalCompositeOperation = 'source-over';
+    lctx.globalAlpha = 1;
+    lctx.clearRect(0, 0, width, height);
+    return lctx;
   }
 
   /** Turn engine events into short-lived visual effects. */
@@ -279,6 +336,7 @@ export class Renderer {
   render(state: GameState, prev: FrameCapture | null, alpha: number, opts: RenderOptions): void {
     const { ctx } = this;
     this.fit(state);
+    this.subTick = prev ? Math.min(1, Math.max(0, alpha)) : 1;
     ctx.fillStyle = '#12151b';
     ctx.fillRect(0, 0, this.viewSize.width, this.viewSize.height);
 
@@ -545,39 +603,84 @@ export class Renderer {
 
   /**
    * Clouds. Gas is drawn under the players (a green haze that pulses on each damage second);
-   * smoke over them, thick enough to read as cover. Both fade in and out.
+   * smoke over them, thick enough to read as cover. Each is composed on a scratch layer: the
+   * wall-aware shape, tinted by slowly drifting puffs, cut to the radius it has spread to and
+   * with its holes erased, all with soft edges. Ages are interpolated between ticks, so spreading,
+   * closing holes and fading move smoothly at any frame rate.
    */
   private drawClouds(state: GameState, kind: Cloud['kind']): void {
-    const { ctx } = this;
-    const rate = state.config.tickRate;
+    const { ctx, subTick } = this;
+    const { config } = state;
+    const rate = config.tickRate;
+    const spread = secondsToTicks(config.throwing.spreadTime, config);
+    const clearTicks = secondsToTicks(config.explosions.clearTime, config);
     for (const c of state.clouds) {
       if (c.kind !== kind) continue;
-      const fade = Math.min(1, c.ticksLeft / rate);
+      // Age at the moment this frame shows (between the previous tick and this one).
+      const age = c.age - 1 + subTick;
+      const radius = spread > 0 ? c.radius * Math.min(1, (age + 1) / spread) : c.radius;
       const field = this.cloudField(state, c);
-      ctx.save();
-      // Spreading: only the part within the current radius shows.
-      ctx.beginPath();
-      ctx.arc(c.x, c.y, cloudRadius(state, c), 0, Math.PI * 2);
-      ctx.clip();
-      // Gas throbs on each damage second; smoke breathes slowly.
-      const pulse = kind === 'gas' ? 0.75 + 0.25 * (1 - (c.age % rate) / rate) ** 2 : 0.92 + 0.08 * Math.sin(c.age / (rate * 0.8) + c.id);
+      const size = Math.ceil(field.size); // one world unit per layer pixel
+      const lctx = this.scratch('cloudLayer', size, size);
+      lctx.setTransform(1, 0, 0, 1, -field.x, -field.y);
+      lctx.drawImage(field.image, field.x, field.y, field.size, field.size);
+
+      // Texture: puffs recolour the cloud without changing how dense it is.
+      lctx.globalCompositeOperation = 'source-atop';
+      if (this.puffs.size > 64) this.puffs.clear();
+      const puffs = this.puffs.get(c.id) ?? cloudPuffs(c.id);
+      this.puffs.set(c.id, puffs);
+      const seconds = age / rate;
+      for (const p of puffs) {
+        const a = p.angle + p.spin * seconds;
+        const x = c.x + Math.cos(a) * p.orbit * radius;
+        const y = c.y + Math.sin(a) * p.orbit * radius;
+        const r = p.size * (0.4 * c.radius + 0.6 * radius) * (1 + 0.1 * Math.sin(seconds * 1.4 + p.angle * 3));
+        const [cr, cg, cb, peak] = kind === 'smoke' ? (p.light ? [250, 251, 253, 0.55] : [118, 126, 140, 0.4]) : p.light ? [206, 248, 112, 0.5] : [62, 112, 30, 0.45];
+        const g = lctx.createRadialGradient(x, y, 0, x, y, r);
+        g.addColorStop(0, `rgba(${cr},${cg},${cb},${peak})`);
+        g.addColorStop(1, `rgba(${cr},${cg},${cb},0)`);
+        lctx.fillStyle = g;
+        lctx.beginPath();
+        lctx.arc(x, y, r, 0, Math.PI * 2);
+        lctx.fill();
+      }
+
+      // Spreading: only what lies within the current radius shows, fading out over the rim.
+      if (radius < c.radius) {
+        lctx.globalCompositeOperation = 'destination-in';
+        lctx.fillStyle = softDisc(lctx, c.x, c.y, radius);
+        lctx.fillRect(field.x, field.y, field.size, field.size);
+      }
+
+      // Holes blown by explosions, each shrinking back to its blast point.
+      for (const h of c.holes) {
+        const hr = clearTicks > 0 ? h.radius * Math.max(0, 1 - (h.age - 1 + subTick) / clearTicks) : 0;
+        if (hr <= 0) continue;
+        const mask = this.holeMask(state, h);
+        const hsize = Math.ceil(mask.size);
+        const hctx = this.scratch('holeLayer', hsize, hsize);
+        hctx.setTransform(1, 0, 0, 1, -mask.x, -mask.y);
+        hctx.drawImage(mask.image, mask.x, mask.y, mask.size, mask.size);
+        hctx.globalCompositeOperation = 'destination-in';
+        hctx.fillStyle = softDisc(hctx, h.x, h.y, hr);
+        hctx.fillRect(mask.x, mask.y, mask.size, mask.size);
+        lctx.globalCompositeOperation = 'destination-out';
+        lctx.drawImage(this.holeLayer!, 0, 0, hsize, hsize, mask.x, mask.y, hsize, hsize);
+      }
+
+      // Gas throbs on each damage second; both fade out over their last second.
+      const fade = Math.max(0, Math.min(1, (c.ticksLeft + 1 - subTick) / rate));
+      const pulse = kind === 'gas' ? 0.8 + 0.2 * (1 - (((age % rate) + rate) % rate) / rate) ** 2 : 1;
       ctx.globalAlpha = fade * pulse;
-      ctx.drawImage(this.cloudImage(state, c, field), field.x, field.y, field.size, field.size);
-      ctx.restore();
+      ctx.drawImage(this.cloudLayer!, 0, 0, size, size, field.x, field.y, size, size);
+      ctx.globalAlpha = 1;
     }
   }
 
 
   private drawGrenades(state: GameState, prev: FrameCapture | null, alpha: number): void {
     const { ctx } = this;
-    // Where each grenade will go off if nobody is in the way, shaded by damage.
-    for (const g of state.grenades) {
-      const impact = grenadeImpact(state, g);
-      const field = this.blastField(state, 'grenade', Math.round(impact.x), Math.round(impact.y));
-      ctx.globalAlpha = 0.35;
-      ctx.drawImage(field.image, field.x, field.y, field.size, field.size);
-      ctx.globalAlpha = 1;
-    }
     // Drawn a little larger than the hitbox so it reads at small scales.
     const r = state.config.launcher.grenadeRadius * 1.4;
     for (const g of state.grenades) {

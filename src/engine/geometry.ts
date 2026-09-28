@@ -216,6 +216,52 @@ export function pathAroundWalls(x0: number, y0: number, x1: number, y1: number, 
   return result <= maxLength ? result : Infinity;
 }
 
+/**
+ * `pathAroundWalls` from one fixed start to many points: the corner distances are worked out
+ * once, so each query only checks which corners see the point. Same lengths as
+ * `pathAroundWalls`; used to draw whole blast and cloud maps without stalling a frame.
+ */
+export function pathsAroundWallsFrom(x0: number, y0: number, walls: readonly Rect[], maxLength: number): (x1: number, y1: number) => number {
+  const dist = (ax: number, ay: number, bx: number, by: number) => Math.sqrt((bx - ax) * (bx - ax) + (by - ay) * (by - ay));
+  const nodes: { x: number; y: number; d: number }[] = [];
+  for (const w of walls) {
+    for (const [cx, cy] of [
+      [w.x - CORNER_GAP, w.y - CORNER_GAP], [w.x + w.w + CORNER_GAP, w.y - CORNER_GAP],
+      [w.x - CORNER_GAP, w.y + w.h + CORNER_GAP], [w.x + w.w + CORNER_GAP, w.y + w.h + CORNER_GAP],
+    ]) {
+      if (dist(x0, y0, cx, cy) > maxLength) continue;
+      if (walls.some((o) => cx > o.x && cx < o.x + o.w && cy > o.y && cy < o.y + o.h)) continue;
+      nodes.push({ x: cx, y: cy, d: lineOfSight(x0, y0, cx, cy, walls) ? dist(x0, y0, cx, cy) : Infinity });
+    }
+  }
+  const done = nodes.map(() => false);
+  for (;;) {
+    let i = -1;
+    for (let k = 0; k < nodes.length; k++) if (!done[k] && nodes[k].d < maxLength && (i < 0 || nodes[k].d < nodes[i].d)) i = k;
+    if (i < 0) break;
+    done[i] = true;
+    const n = nodes[i];
+    for (let k = 0; k < nodes.length; k++) {
+      if (done[k]) continue;
+      const via = n.d + dist(n.x, n.y, nodes[k].x, nodes[k].y);
+      if (via < nodes[k].d && lineOfSight(n.x, n.y, nodes[k].x, nodes[k].y, walls)) nodes[k].d = via;
+    }
+  }
+  const reached = nodes.filter((n) => n.d < maxLength).sort((a, b) => a.d - b.d);
+  return (x1, y1) => {
+    const direct = dist(x0, y0, x1, y1);
+    if (direct > maxLength) return Infinity;
+    if (lineOfSight(x0, y0, x1, y1, walls)) return direct;
+    let best = Infinity;
+    for (const n of reached) {
+      if (n.d >= best) break;
+      const via = n.d + dist(n.x, n.y, x1, y1);
+      if (via < best && lineOfSight(n.x, n.y, x1, y1, walls)) best = via;
+    }
+    return best <= maxLength ? best : Infinity;
+  };
+}
+
 /** True if the straight segment between two points does not cross any wall. */
 export function lineOfSight(x0: number, y0: number, x1: number, y1: number, walls: readonly Rect[]): boolean {
   for (const wall of walls) {

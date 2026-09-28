@@ -1,6 +1,6 @@
 import { secondsToTicks } from '../config.ts';
 import { length } from '../dmath.ts';
-import { lineOfSight, pathAroundWalls, segmentCircleHit, segmentRectHit } from '../geometry.ts';
+import { lineOfSight, pathAroundWalls, pathsAroundWallsFrom, segmentCircleHit, segmentRectHit } from '../geometry.ts';
 import { solidRects, type ActionInput, type Explosion, type GameState, type PlayerState } from '../types.ts';
 import { applyDamage } from './combat.ts';
 import { blowHoles } from './throwables.ts';
@@ -99,7 +99,6 @@ export function blastDamage(center: number, edge: number, radius: number, distan
  * self-damage factor (0 if out of reach). Measured to the player's edge. Walls stop the blast,
  * but it spreads around wall corners: the distance that counts is the shortest path around
  * walls. With explosions.aroundCorners 0 (old replays) a wall on the straight line shields.
- * The renderer uses this too, to shade blast areas by damage.
  */
 export function blastDamageAt(state: GameState, source: 'grenade' | 'mine', bx: number, by: number, px: number, py: number): number {
   const { config } = state;
@@ -117,18 +116,24 @@ export function blastDamageAt(state: GameState, source: 'grenade' | 'mine', bx: 
   return blastDamage(centerDamage, edgeDamage, blastRadius, distance);
 }
 
-/** Where a flying grenade will explode if no player gets in the way: a wall, or the end of its range. */
-export function grenadeImpact(state: GameState, g: { x: number; y: number; vx: number; vy: number; traveled: number }): { x: number; y: number } {
-  const { launcher } = state.config;
-  const left = Math.max(0, launcher.range - g.traveled);
-  const x1 = g.x + (g.vx / launcher.grenadeSpeed) * left;
-  const y1 = g.y + (g.vy / launcher.grenadeSpeed) * left;
-  let hitT = 1;
-  for (const wall of solidRects(state.map)) {
-    const t = segmentRectHit(g.x, g.y, x1, y1, wall, launcher.grenadeRadius);
-    if (t !== null && t < hitT) hitT = t;
-  }
-  return { x: g.x + (x1 - g.x) * hitT, y: g.y + (y1 - g.y) * hitT };
+/** `blastDamageAt` for one blast and many points (the renderer's damage maps), computed faster. */
+export function blastDamageMap(state: GameState, source: 'grenade' | 'mine', bx: number, by: number): (px: number, py: number) => number {
+  const { config } = state;
+  const r = config.player.radius;
+  const { blastRadius, centerDamage, edgeDamage } = source === 'grenade' ? config.launcher : config.mines;
+  const path = config.explosions.aroundCorners > 0 ? pathsAroundWallsFrom(bx, by, state.map.walls, blastRadius + r) : null;
+  return (px, py) => {
+    let distance = length(px - bx, py - by) - r;
+    if (distance > blastRadius) return 0;
+    if (path) {
+      const d = path(px, py);
+      if (d === Infinity) return 0;
+      distance = d - r;
+    } else if (!lineOfSight(bx, by, px, py, state.map.walls)) {
+      return 0;
+    }
+    return blastDamage(centerDamage, edgeDamage, blastRadius, distance);
+  };
 }
 
 /**

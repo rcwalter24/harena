@@ -1,6 +1,7 @@
+import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import {
-  circleRectPush, lineOfSight, resolveCircleWalls, segmentCircleHit, segmentRectHit,
+  circleRectPush, lineOfSight, pathAroundWalls, pathsAroundWallsFrom, resolveCircleWalls, segmentCircleHit, segmentRectHit,
 } from '../../src/engine/geometry.ts';
 
 const box = { x: 100, y: 100, w: 100, h: 50 };
@@ -57,5 +58,21 @@ describe('geometry', () => {
   it('lineOfSight is blocked by walls', () => {
     expect(lineOfSight(0, 125, 300, 125, [box])).toBe(false);
     expect(lineOfSight(0, 50, 300, 50, [box])).toBe(true);
+  });
+  it("pathsAroundWallsFrom gives exactly pathAroundWalls's lengths", () => {
+    const { walls } = JSON.parse(readFileSync(new URL('../../maps/corridors.json', import.meta.url), 'utf8')) as { walls: typeof box[] };
+    let shadowed = 0;
+    for (const w of walls.slice(0, 6)) {
+      const [x0, y0] = [w.x - 15, w.y + 30]; // beside a wall, just below its top corner
+      const path = pathsAroundWallsFrom(x0, y0, walls, 120);
+      for (let y = y0 - 120; y <= y0 + 120; y += 7) {
+        for (let x = x0 - 120; x <= x0 + 120; x += 7) {
+          const expected = pathAroundWalls(x0, y0, x, y, walls, 120);
+          if (expected !== Infinity && !lineOfSight(x0, y0, x, y, walls)) shadowed++;
+          expect(path(x, y)).toBe(expected);
+        }
+      }
+    }
+    expect(shadowed).toBeGreaterThan(50); // the check covers paths that bend around corners
   });
 });
