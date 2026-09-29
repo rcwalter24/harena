@@ -30,6 +30,16 @@ export interface ShellHooks {
   onKey?: (e: KeyboardEvent) => boolean;
 }
 
+const PANEL_KEY = 'harena.panelCollapsed';
+
+function loadPanelCollapsed(): boolean {
+  try {
+    return localStorage.getItem(PANEL_KEY) === '1';
+  } catch {
+    return false;
+  }
+}
+
 /**
  * The shared arena page used by live matches and replays: canvas, kill feed,
  * player cards, pause / step / speed controls, debug toggle, results overlay
@@ -59,11 +69,15 @@ export class ArenaShell {
           <div class="killfeed" id="killfeed"></div>
           <div class="results hidden" id="results"></div>
           <div class="stage-info" id="stage-info"></div>
+          <button id="panel-show" class="panel-show" title="${t('Show the side panel (Tab)')}">«</button>
         </div>
         <aside class="panel">
           <div class="panel-head">
             <h1>Harena ${opts.badge ? `<span class="badge replay">${opts.badge}</span>` : ''}</h1>
-            <button id="exit" title="Esc">${t('← Setup')}</button>
+            <span class="panel-head-buttons">
+              <button id="exit" title="Esc">${t('← Setup')}</button>
+              <button id="panel-hide" title="${t('Hide the side panel (Tab)')}">»</button>
+            </span>
           </div>
           <div class="match-meta">${opts.meta}</div>
           <div class="controls">
@@ -100,6 +114,9 @@ export class ArenaShell {
     this.el('slower').onclick = () => this.changeSpeed(-1);
     this.el('faster').onclick = () => this.changeSpeed(1);
     this.el('exit').onclick = () => hooks.onExit();
+    this.el('panel-hide').onclick = () => this.setPanelCollapsed(true);
+    this.el('panel-show').onclick = () => this.setPanelCollapsed(false);
+    this.setPanelCollapsed(loadPanelCollapsed());
 
     this.keyHandler = (e: KeyboardEvent) => {
       const tag = (e.target as HTMLElement).tagName;
@@ -112,6 +129,10 @@ export class ArenaShell {
         case 'BracketRight': this.changeSpeed(1); break;
         case 'KeyR': hooks.onRestart(); break;
         case 'Escape': hooks.onExit(); break;
+        case 'Tab':
+          e.preventDefault();
+          this.setPanelCollapsed(!this.root.querySelector('.layout')!.classList.contains('collapsed'));
+          break;
         case 'F3':
           e.preventDefault();
           this.debugBox.checked = !this.debugBox.checked;
@@ -119,6 +140,16 @@ export class ArenaShell {
       }
     };
     window.addEventListener('keydown', this.keyHandler);
+  }
+
+  /** Hide or show the side panel; the arena grows to fill the space. Remembered in this browser. */
+  setPanelCollapsed(collapsed: boolean): void {
+    this.root.querySelector('.layout')!.classList.toggle('collapsed', collapsed);
+    try {
+      localStorage.setItem(PANEL_KEY, collapsed ? '1' : '0');
+    } catch {
+      // Not remembered; lasts for this page only.
+    }
   }
 
   el<T extends HTMLElement = HTMLElement>(id: string): T {

@@ -89,7 +89,7 @@ export function mountMatch(app: HTMLElement, setup: MatchSetup, callbacks: Match
         <div class="log-list" id="log-list"></div>
       </div>`,
     help: `${hasHuman ? t('<b>WASD</b> move · <b>mouse</b> aim · <b>click/Space</b> attack<br /><b>1/2/3/4</b> knife/gun/launcher/laser · <b>Q</b> next weapon · <b>E/right click</b> mine · <b>F/C</b> throw smoke/gas to the cursor<br />') : ''}
-      ${t('<b>P</b> pause · <b>N</b> step · <b>[ ]</b> speed · <b>R</b> restart · <b>F3</b> debug')}
+      ${t('<b>P</b> pause · <b>N</b> step · <b>[ ]</b> speed · <b>R</b> restart · <b>F3</b> debug · <b>Tab</b> panel')}
       ${setup.debug ? t('<br />Cheats: <b>G</b> all weapons + ammo + mines · <b>H</b> heal + shield') : ''}`,
   }, {
     viewerId: hasHuman ? humanId : undefined,

@@ -94,6 +94,7 @@ Add **You (keyboard)** as a player on the setup page.
 | `F` / `C` | Throw a smoke / gas grenade to the mouse cursor |
 | `P` · `N` · `[` `]` · `R` | Pause · step · speed · restart |
 | `F3` | Debug overlay (hitboxes, ranges) |
+| `Tab` | Hide or show the side panel (also the » and « buttons) |
 
 ## Host your own copy
 

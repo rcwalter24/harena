@@ -172,6 +172,8 @@ export const ZH: Record<string, string> = {
 
   // Arena pages
   '← Setup': '← 设置',
+  'Hide the side panel (Tab)': '收起侧边栏（Tab）',
+  'Show the side panel (Tab)': '展开侧边栏（Tab）',
   Pause: '暂停',
   Resume: '继续',
   Step: '单步',
@@ -195,11 +197,11 @@ export const ZH: Record<string, string> = {
   'human player': '真人玩家',
   '<b>WASD</b> move · <b>mouse</b> aim · <b>click/Space</b> attack<br /><b>1/2/3/4</b> knife/gun/launcher/laser · <b>Q</b> next weapon · <b>E/right click</b> mine · <b>F/C</b> throw smoke/gas to the cursor<br />':
     '<b>WASD</b> 移动 · <b>鼠标</b> 瞄准 · <b>左键/空格</b> 攻击<br /><b>1/2/3/4</b> 匕首/枪/榴弹/激光 · <b>Q</b> 切换武器 · <b>E/右键</b> 地雷 · <b>F/C</b> 往鼠标处丢烟雾弹/毒气弹<br />',
-  '<b>P</b> pause · <b>N</b> step · <b>[ ]</b> speed · <b>R</b> restart · <b>F3</b> debug':
-    '<b>P</b> 暂停 · <b>N</b> 单步 · <b>[ ]</b> 调速 · <b>R</b> 重开 · <b>F3</b> 调试',
+  '<b>P</b> pause · <b>N</b> step · <b>[ ]</b> speed · <b>R</b> restart · <b>F3</b> debug · <b>Tab</b> panel':
+    '<b>P</b> 暂停 · <b>N</b> 单步 · <b>[ ]</b> 调速 · <b>R</b> 重开 · <b>F3</b> 调试 · <b>Tab</b> 侧边栏',
   '<br />Cheats: <b>G</b> all weapons + ammo + mines · <b>H</b> heal + shield': '<br />作弊：<b>G</b> 全武器 + 弹药 + 地雷 · <b>H</b> 回血 + 护盾',
-  '<b>P</b> pause · <b>N</b> step · <b>[ ]</b> speed · <b>← →</b> seek 5s · <b>R</b> restart · <b>F3</b> debug':
-    '<b>P</b> 暂停 · <b>N</b> 单步 · <b>[ ]</b> 调速 · <b>← →</b> 前后 5 秒 · <b>R</b> 重开 · <b>F3</b> 调试',
+  '<b>P</b> pause · <b>N</b> step · <b>[ ]</b> speed · <b>← →</b> seek 5s · <b>R</b> restart · <b>F3</b> debug · <b>Tab</b> panel':
+    '<b>P</b> 暂停 · <b>N</b> 单步 · <b>[ ]</b> 调速 · <b>← →</b> 前后 5 秒 · <b>R</b> 重开 · <b>F3</b> 调试 · <b>Tab</b> 侧边栏',
   '🎬 Export video': '🎬 导出视频',
   'Render this replay to a video file': '把这段回放渲染成视频文件',
   '⚠ Desync at tick {tick}: the re-simulation no longer matches the recording (engine or config changed since it was recorded?).':

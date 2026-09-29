@@ -53,7 +53,7 @@ export function mountReplay(app: HTMLElement, replay: Replay, callbacks: { onExi
         ${replay.players.map((p, i) => `<div class="replay-seat"><span class="dot" style="background:${playerColor(i)}"></span>${escapeHtml(p.name)} <span class="muted">${escapeHtml(sources[i])}${p.sourceHash ? ` · ${p.sourceHash.slice(0, 8)}` : ''}</span></div>`).join('')}
         ${replay.cheats.length ? `<div class="note">${t('{n} debug cheat(s) recorded', { n: replay.cheats.length })}</div>` : ''}
       </div>`,
-    help: t('<b>P</b> pause · <b>N</b> step · <b>[ ]</b> speed · <b>← →</b> seek 5s · <b>R</b> restart · <b>F3</b> debug'),
+    help: t('<b>P</b> pause · <b>N</b> step · <b>[ ]</b> speed · <b>← →</b> seek 5s · <b>R</b> restart · <b>F3</b> debug · <b>Tab</b> panel'),
   }, {
     onRestart: () => seekTo(0),
     onExit: () => callbacks.onExit(),

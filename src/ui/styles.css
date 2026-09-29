@@ -537,3 +537,22 @@ button.primary:disabled:hover { border-color: var(--accent); }
 .modal button { font-size: 13px; padding: 5px 12px; }
 .starter .note { margin-top: 8px; }
 .starter .note a { color: var(--accent); }
+
+/* ---------- collapsible side panel ---------- */
+
+.panel-head-buttons { display: flex; gap: 6px; }
+.layout.collapsed .panel { display: none; }
+.panel-show {
+  position: absolute;
+  top: 50%;
+  right: 0;
+  transform: translateY(-50%);
+  padding: 14px 6px;
+  border-radius: 6px 0 0 6px;
+  border-right: none;
+  background: var(--panel);
+  opacity: 0.75;
+  display: none;
+}
+.panel-show:hover { opacity: 1; }
+.layout.collapsed .panel-show { display: block; }
